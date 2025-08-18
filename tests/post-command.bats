@@ -9,7 +9,7 @@ setup() {
 }
 
 @test "Missing API Secret Key configuration fails" {
-  unset BUILDKITE_PLUGIN_YOUR_CHATGPT_PROMPTER_API_SECRET_KEY_NAME
+  unset BUILDKITE_PLUGIN_YOUR_CHATGPT_ANALYSER_API_SECRET_KEY_NAME
 
   run "$PWD"/hooks/command
 
@@ -19,7 +19,7 @@ setup() {
 }
 
 @test "Empty or Incorrect API Secret Key Name in configuration fails" {
-  export BUILDKITE_PLUGIN_YOUR_CHATGPT_PROMPTER_API_SECRET_KEY_NAME=''
+  export BUILDKITE_PLUGIN_YOUR_CHATGPT_ANALYSER_API_SECRET_KEY_NAME=''
 
   run "$PWD"/hooks/command
 
@@ -30,7 +30,7 @@ setup() {
 
 
 @test "Invalid API Token fails" {
-  export BUILDKITE_PLUGIN_YOUR_CHATGPT_PROMPTER_API_SECRET_KEY_NAME='123'
+  export BUILDKITE_PLUGIN_YOUR_CHATGPT_ANALYSER_API_SECRET_KEY_NAME='123'
 
   run "$PWD"/hooks/command
 

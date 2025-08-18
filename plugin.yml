@@ -1,5 +1,5 @@
-name: ChatGPT Prompter
-description: Sends a user prompt to ChatGPT
+name: ChatGPT Analyser
+description: Provide Buildkite Builds/Step analysis using ChatGPT
 author: https://github.com/buildkite-plugins
 requirements:
   - bash

@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 
-PLUGIN_PREFIX="CHATGPT_PROMPTER"
+PLUGIN_PREFIX="CHATGPT_ANALYSER"
 
 # Reads either a value or a list from the given env prefix
 function prefix_read_list() {
@@ -152,8 +152,8 @@ function validate_bk_token() {
 }
 
 function get_current_build_information() {  
-  local bk_api_token="$1"
-  
+  local bk_api_token="$1" 
+
   # Fetch build information from Buildkite API
   response=$(curl -s -f -X GET "https://api.buildkite.com/v2/organizations/${BUILDKITE_ORGANIZATION_SLUG}/pipelines/${BUILDKITE_PIPELINE_SLUG}/builds/${BUILDKITE_BUILD_NUMBER}" \
     -H "Authorization: Bearer ${bk_api_token}" \
@@ -167,7 +167,7 @@ function get_current_build_information() {
   echo "${response}"
 }
  
-function send_prompt() {
+function send_analaysis() {
   local api_secret_key="$1"
   local model="$2"
   local user_prompt="$3"
@@ -203,15 +203,15 @@ function send_prompt() {
   if [ "${user_prompt}" == "ping" ]; then 
     echo -e "# ChatGPT Annotation Plugin 
         ✅ Verified OpenAI token. Successfully pinged ChatGPT with model: ${model}"  \
-        | buildkite-agent annotate  --style "info" --context "chatgpt-prompter"     
+        | buildkite-agent annotate  --style "info" --context "chatgpt-analyse"     
 
     return 0
   fi
 
   ## Generate a more elaborate annotation
   content_response=$(echo "${response}" | jq -r '.choices[0].message.content' | sed 's/^/  /') 
-    echo -e "### ChatGPT Annotation Plugin"  | buildkite-agent annotate  --style "info" --context "chatgpt-prompter"    
-    echo -e "${content_response}"  | buildkite-agent annotate  --style "info" --context "chatgpt-prompter" --append
+    echo -e "### ChatGPT Annotation Plugin"  | buildkite-agent annotate  --style "info" --context "chatgpt-analyse"    
+    echo -e "${content_response}"  | buildkite-agent annotate  --style "info" --context "chatgpt-analyse" --append
 
   return 0
 }

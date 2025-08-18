@@ -1,6 +1,6 @@
-# ChatGPT Prompter Buildkite Plugin [![Build status](https://badge.buildkite.com/d673030645c7f3e7e397affddd97cfe9f93a40547ed17b6dc5.svg)](https://buildkite.com/buildkite/plugins-template)
+# ChatGPT analyser Buildkite Plugin [![Build status](https://badge.buildkite.com/d673030645c7f3e7e397affddd97cfe9f93a40547ed17b6dc5.svg)](https://buildkite.com/buildkite/plugins-template)
 
-A Buildkite plugin that allows users to send a prompt to ChatGPT  
+A Buildkite plugin that provides build or step level analysis using ChatGPT.  
 
 ## Requirements
 
@@ -21,7 +21,7 @@ steps:
   - label: "🔍 Prompt ChatGPT to summarise test results"
     command: "npm test"
     plugins:
-      - chatgpt-prompter#v0.0.1: ~
+      - chatgpt-analyser#v0.0.1: ~
 ```
 
 ### Using Buildkite secrets (recommended)
@@ -41,7 +41,7 @@ steps:
   - label: "🔍 Prompt ChatGPT to summarise build"
     command: echo "Summarise build"
     plugins:
-      - chatgpt-prompter#v0.0.1: ~
+      - chatgpt-analyser#v0.0.1: ~
 ```
 
 
@@ -79,7 +79,7 @@ steps:
   - label: "🔍 Prompt ChatGPT to focus on build performance"
     command: "echo template plugin with options"
     plugins:
-      - chatgpt-prompter#v0.0.1:
+      - chatgpt-analyser#v0.0.1:
           api_key: "$OTHER_OPENAI_API_TOKEN"
           buildkite_api_token: "$OTHER_BUILDKITE_API_TOKEN"
           model: "gpt-3.5-turbo"
