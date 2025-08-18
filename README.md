@@ -60,6 +60,10 @@ The plugin will fail if no OpenAI key is set.
 
 The environment variable that the Buildkite API Token is stored in. Defaults to `BUILDKITE_API_TOKEN`. If the env var is not set, the plugin will show a warning and will default to using step level analysis. The Buildkite API token is used for fetching build information from the Buildkite API to use for build level analysis. The Buildkite API token should have at least `read_builds` and `read_build_logs` [token scopes](https://buildkite.com/docs/apis/managing-api-tokens#token-scopes), otherwise API calls will fail. 
 
+#### `analysis_level` (string)
+
+The level of analysis to perform on the logs. Options: `step`, `build`. If a `buildkite_api_token` is provided, this will fetch job logs and build information. Otherwise, available environment variables will be used.  Defaults to `step`.
+
 #### `model` (string)
 
 The ChatGPT model. Defaults to `GPT-4o mini`.

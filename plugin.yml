@@ -12,6 +12,11 @@ configuration:
     buildkite_api_token:
       type: string
       description: The environment variable that the Buildkite API Token is stored in.  
+    analysis_level:
+      type: string
+      description: The level of analysis to perform (e.g., "step", "build").
+      enum: [step, build]
+      default: step
     model:
       type: string
       description: ChatGPT model to use.
