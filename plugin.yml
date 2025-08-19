@@ -4,6 +4,7 @@ author: https://github.com/buildkite-plugins
 requirements:
   - bash
   - curl
+  - jq
 configuration:
   properties:
     api_key:

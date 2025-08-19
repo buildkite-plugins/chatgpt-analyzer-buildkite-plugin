@@ -5,9 +5,9 @@ set -euo pipefail
 DIR="$(cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd)"
 
 # shellcheck source=lib/plugin.bash
-. "$DIR/../lib/plugin.bash" 
+. "$DIR/../lib/plugin.bash"
 
-echo "--- :robot_face: ChatGPT Analyser Plugin"
+echo "--- :robot_face: ChatGPT Prompter Plugin"
 
 # Validate required tools
 validate_required_tools || exit 1
@@ -17,25 +17,26 @@ echo "Retrieving OpenAI API Key ..."
 # Read plugin configuration for OpenAI API Key
 API_KEY=$(get_openai_api_key)
 if [ -z "${API_KEY}" ]; then
-  log_error "Missing OpenAI API Key. Please set the API_KEY in your plugin configuration." 
+  echo '❌ Error: Missing OpenAI API Key. Please set the API_KEY in your plugin configuration.'
   exit 1
 fi   
 
 echo "Retrieving other plugin configurations ..."
 # Load Plugin configuration
-BUILDKITE_API_TOKEN=$(get_bk_api_token)
+BUILDKITE_API_TOKEN=$(get_bk_api_token) 
 ANALYSIS_LEVEL=$(plugin_read_config ANALYSIS_LEVEL "step")
 MODEL=$(plugin_read_config MODEL "gpt-4o-mini")
 CUSTOM_PROMPT=$(plugin_read_config CUSTOM_PROMPT "")
 
-echo "ChatGPT Model: ${MODEL}"
-echo "Additional Prompt: ${CUSTOM_PROMPT:-}"
+echo "Using Model: ${MODEL}"
+echo "Using Custom Prompt: ${CUSTOM_PROMPT:-}"
+echo "Analysis Level: ${ANALYSIS_LEVEL}"
 
 # validating buildkite token
 validate_bk_token "${BUILDKITE_API_TOKEN}" || exit 1
 
-generate_build_info "${BUILDKITE_API_TOKEN}" "${ANALYSIS_LEVEL}"
-# Send the prompt to ChatGPT
-# echo "Sending build information to ChatGPT for analysis  ..."
-# send_analysis "${API_KEY}" "${MODEL}" "${CUSTOM_PROMPT}" "${BUILD_INFO}"
+# Analyze build information 
+CHATGPT_ANALYSIS=$(analyse_build_info "${BUILDKITE_API_TOKEN}" "${ANALYSIS_LEVEL}") 
+send_prompt "${API_KEY}" "${CHATGPT_ANALYSIS}" "${MODEL}" "${CUSTOM_PROMPT}" "${ANALYSIS_LEVEL}"
+
 echo "~~~ Done."
