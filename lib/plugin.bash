@@ -3,7 +3,7 @@ set -euo pipefail
 
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/logger.bash" 
 
-PLUGIN_PREFIX="CHATGPT_ANALYSER"
+PLUGIN_PREFIX="CHATGPT_ANALYZER"
 
 # Reads either a value or a list from the given env prefix
 function prefix_read_list() {
