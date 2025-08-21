@@ -110,49 +110,6 @@ function get_bk_api_token() {
   echo "${bk_token}"
 }
 
-function validate_bk_token() {
-  local bk_api_token="$1" 
-
-  # Check if the BK API token is valid
-  if [ -z "${bk_api_token}" ]; then
-    # the token is not set, so we assume it is not required
-    return 0
-  fi
-
-  #validate token scope
-  log_info "Validating Buildkite API token scope..."
-  response=$(curl -sS -H "Authorization: Bearer ${bk_api_token}" \
-    -X GET "https://api.buildkite.com/v2/access-token")
-  
-  #check if response is 200
-  if [ $? -ne 0 ]; then
-    log_error " Invalid Buildkite API token." 
-    return 1
-  fi
-
-  #check if response is empty
-  if [ -z "${response}" ]; then
-    log_error "Failed to validate the Buildkite API token provided."
-    return 1
-  fi
-
-  if ! echo "${response}" | jq -e '.scopes' > /dev/null; then
-    log_error "Failed to validate the scope of the Buildkite API token provided."
-    return 1
-  fi 
-
-  scopes=$(echo "${response}" | jq -r '.scopes[]')   
-  
-  # Check if token has required read scopes
-  if [[ ! "${scopes}" =~ read_builds ]] || [[ ! "${scopes}" =~ read_build_logs ]]; then
-    log_error "The Buildkite API token does not have the required 'read_builds' and 'read_build_logs' scopes."
-    echo "Current scopes: ${scopes}"
-    return 1
-  fi
-  
-  return 0
-}
-
 function get_job_logs() {
   local bk_api_token="$1"
   local job_id=$2
@@ -186,20 +143,18 @@ function get_job_logs() {
     fi
 
     #cleanup raw file
-    rm -f "${job_logs_raw}"
-  else
-    echo "Could not fetch logs for this job." >> "${output_file}"
+    rm -f "${job_logs_raw}" 
   fi
 }
 
-function analyse_build_info() {
-  local bk_api_token="$1"
-  local analysis_level="$2"
+ 
+function get_build_environment_details() {
+  local analysis_level="$1"
 
   local build_info="Build: ${BUILDKITE_PIPELINE_SLUG} #${BUILDKITE_BUILD_NUMBER}
 Build Label: ${BUILDKITE_MESSAGE:-Unknown}
 Build URL: ${BUILDKITE_BUILD_URL:-Unknown}
-Build Source: ${BUILDKITE_SOURCE:-Unknown}"  
+Build Source: ${BUILDKITE_SOURCE:-Unknown}"
 
   if [ "${BUILDKITE_SOURCE}" == "trigger_job" ]; then
     build_info="${build_info}
@@ -213,60 +168,73 @@ Pull Request: ${BUILDKITE_PULL_REQUEST_BASE_BRANCH:-Unknown}
 Pull Request URL: ${BUILDKITE_PULL_REQUEST_URL:-Unknown}"
   fi
 
-  # Check if Buildkite API token is provided
-  local log_file="/tmp/buildlog_${BUILDKITE_BUILD_ID}.txt"
+  if [ "${analysis_level}" == "step" ] && [ -n "${BUILDKITE_JOB_ID}" ]; then
+    # add step information from environment variables
+    build_info="${build_info}
+Job: ${BUILDKITE_LABEL:-Unknown}
+Command: ${BUILDKITE_COMMAND:-Unknown}
+Command Exit status: ${BUILDKITE_COMMAND_EXIT_STATUS:-0}" 
+  fi
 
+  echo "${build_info}"
+}
+
+function get_build_summary() {
+  local bk_api_token="$1"
+  local analysis_level="$2"
+
+  local build_info
+  build_info=$(get_build_environment_details "${analysis_level}")
+
+
+  # prepare retrieving build or job logs
+  local default_max_lines=1000  
+  local log_file="/tmp/buildkite_logs_${BUILDKITE_BUILD_ID}.txt" 
   if ! touch "${log_file}" 2>/dev/null; then
     log_error "Could not create log file: ${log_file}"
     return 1
-  fi
+  fi   
 
-  local default_max_lines=1000
-  if [ -n "${bk_api_token}" ]; then  
-    if [ "${analysis_level}" == "step" ] && [ -n "${BUILDKITE_JOB_ID}" ]; then
-      # Generate step-level build information
-      get_job_logs "${bk_api_token}" "${BUILDKITE_JOB_ID}" "${log_file}" "${default_max_lines}"
+ 
+  if [ "${analysis_level}" == "step" ] && [ -n "${BUILDKITE_JOB_ID}" ]; then  
+    # Get job logs
+    get_job_logs "${bk_api_token}" "${BUILDKITE_JOB_ID}" "${log_file}" "${default_max_lines}"
+    
+  else
+    # Generate build-level information
+    local build_details_file="/tmp/build_details_${BUILDKITE_BUILD_ID}.json"
+    local build_url="https://api.buildkite.com/v2/organizations/${BUILDKITE_ORGANIZATION_SLUG}/pipelines/${BUILDKITE_PIPELINE_SLUG}/builds/${BUILDKITE_BUILD_NUMBER}"
 
+    if curl -s -f -H "Authorization: Bearer ${bk_api_token}" "${build_url}" > "${build_details_file}" 2>/dev/null; then
+      local started_at finished_at
+      started_at=$(jq -r '.started_at // empty' "${build_details_file}" 2>/dev/null)
+      finished_at=$(jq -r '.finished_at // empty' "${build_details_file}" 2>/dev/null)
       build_info="${build_info}
-Job: ${BUILDKITE_LABEL:-Unknown}
-Command: ${BUILDKITE_COMMAND:-Unknown}
-Command Exit status: ${BUILDKITE_COMMAND_EXIT_STATUS:-0}"   
-      
-    else
-      # Generate build-level information
-      local build_details_file="/tmp/build_${BUILDKITE_BUILD_ID}.json"
-      local build_url="https://api.buildkite.com/v2/organizations/${BUILDKITE_ORGANIZATION_SLUG}/pipelines/${BUILDKITE_PIPELINE_SLUG}/builds/${BUILDKITE_BUILD_NUMBER}"
-
-      if curl -s -f -H "Authorization: Bearer ${bk_api_token}" "${build_url}" > "${build_details_file}" 2>/dev/null; then
-          local started_at finished_at
-          started_at=$(jq -r '.started_at // empty' "${build_details_file}" 2>/dev/null)
-          finished_at=$(jq -r '.finished_at // empty' "${build_details_file}" 2>/dev/null)
-          build_info="${build_info}
 Build Started At: ${started_at}
 Build Finished At: ${finished_at}"
- 
-          job_ids=$(jq -r '.jobs[].id // empty' "${build_details_file}" 2>/dev/null)
-          if [ -n "${job_ids}" ]; then
-            # Create a combined job log files
-            : > "${log_file}"
 
-            for job_id in ${job_ids}; do
-              local job_name=$(jq -r --arg job_id "${job_id}" '.jobs[] | select(.id == $job_id) | .name // empty' "${build_details_file}")
-              echo -e "\n===JOB:  ${job_name} (${job_id})===\n"  >> "${log_file}"
+      job_ids=$(jq -r '.jobs[].id // empty' "${build_details_file}" 2>/dev/null)
+      if [ -n "${job_ids}" ]; then
+        # Create a combined job log files
+        : > "${log_file}"
 
-              local job_state=$(jq -r --arg job_id "${job_id}" '.jobs[] | select(.id == $job_id) | .state // empty' "${build_details_file}")
-              local exit_status=$(jq -r --arg job_id "${job_id}" '.jobs[] | select(.id == $job_id) | .exit_status // empty' "${build_details_file}")
-              echo "Job State: ${job_state}
+        for job_id in ${job_ids}; do
+          local job_name=$(jq -r --arg job_id "${job_id}" '.jobs[] | select(.id == $job_id) | .name // empty' "${build_details_file}")
+          echo -e "\n===JOB:  ${job_name} (${job_id})===\n"  >> "${log_file}"
+
+          local job_state=$(jq -r --arg job_id "${job_id}" '.jobs[] | select(.id == $job_id) | .state // empty' "${build_details_file}")
+          local exit_status=$(jq -r --arg job_id "${job_id}" '.jobs[] | select(.id == $job_id) | .exit_status // empty' "${build_details_file}")
+          echo "Job State: ${job_state}
 Exit Status: ${exit_status}" >> "${log_file}"
-              get_job_logs "${bk_api_token}" "${job_id}" "${log_file}" 1000
-            done
-          fi
-
-          # fetch all job logs that have ran/finished
-      rm -f "${build_details_file}"
+          get_job_logs "${bk_api_token}" "${job_id}" "${log_file}" 1000
+        done
       fi
-    fi 
-  fi
+
+     # fetch all job logs that have ran/finished
+    rm -f "${build_details_file}"
+    fi
+  fi 
+   
 
   local logs
   if ! logs=$(< "${log_file}"); then
@@ -276,6 +244,26 @@ Exit Status: ${exit_status}" >> "${log_file}"
 
   # Construct prompt
   local base_prompt
+
+  # check if logs are empty
+  if [ -z "${logs}" ]; then
+    # Default analysis using environment variables
+    base_prompt="Analysis Level: ${analysis_level}
+
+Build Information:
+${build_info}
+
+Note: Detailed logs could not be retrieved. This may be due to:
+- Missing BUILDKITE_API_TOKEN environment variable
+- Insufficient permissions to access logs
+
+To improve log analysis, ensure that the BUILDKITE_API_TOKEN is set with appropriate permissions.
+"
+    echo "${base_prompt}"
+    return
+  fi
+
+
   if [ "${analysis_level}" = "build" ]; then
     base_prompt="Analysis Level: Build Level (multiple jobs)
 Build Information:
@@ -302,6 +290,9 @@ Build Logs:
 \`\`\`
 ${logs}
 \`\`\`
+
+Please provide:
+1. **Analysis**: What happened in this job? $([ "${BUILDKITE_COMMAND_EXIT_STATUS:-0}" -ne 0 ] && echo "Why did this job fail?" || echo "Any notable issues or warnings in this job?")
 "  
   fi
 
@@ -338,30 +329,30 @@ function format_payload() {
   echo "$payload"
 }
 
-function validate_and_process_response() {
+function valid_api_response() {
   local response="$1"
   
   # Check if response is empty
   if [ -z "${response}" ]; then
-    log_error "No response received from OpenAI API."
+    log_warning "No response received from OpenAI API."
     return 1
   fi
   
   # Check if the response contains an error
   if echo "${response}" | jq -e '.error' > /dev/null; then
-    log_error "$(echo "${response}" | jq -r '.error.message')"
+    log_warning "$(echo "${response}" | jq -r '.error.message')"
     return 1
   fi
   
   # Check if the response contains choices
   if ! echo "${response}" | jq -e '.choices' > /dev/null; then
-    log_error "No choices found in the response from OpenAI API."
+    log_warning "No choices found in the response from OpenAI API."
     return 1
   fi
   
   # Check if the response contains a message
   if ! echo "${response}" | jq -e '.choices[0].message.content' > /dev/null; then
-    log_error "No message content found in the response from OpenAI API."
+    log_warning "No message content found in the response from OpenAI API."
     return 1
   fi
   
@@ -400,55 +391,53 @@ function send_prompt() {
   # Call the OpenAI API
   local response
   response=$(call_openapi_chatgpt "${api_secret_key}"  "${prompt_payload}")
-  # Debug response format
-  # local response
-  # response=$(cat /Users/lizjr/Dev/lzr/chatgpt_response.txt) 
-
-  log_info "ChatGPT Analysis Result"
+  
+  log_section "ChatGPT Analysis Result"
   # Validate and process the response
-  if ! validate_and_process_response "${response}"; then
-    return 1
-  fi
+  if valid_api_response "${response}"; then
+   
+    # Extract and display the response content
+    total_tokens=$(echo "${response}" | jq -r '.usage.total_tokens')
+    echo "Summary:"
+    echo "  Total tokens used: ${total_tokens}"
 
-  # Extract and display the response content
-  total_tokens=$(echo "${response}" | jq -r '.usage.total_tokens')
-  echo "Summary:"
-  echo "  Total tokens used: ${total_tokens}"
-
- 
-  content_response=$(echo "${response}" | jq -r '.choices[0].message.content' | sed 's/^/  /')  
-
-  if [ -n "${content_response}" ]; then 
-    annotation_file="/tmp/chatgpt_analysis.md"
-    annotation_title="ChatGPT Step Level Analysis"
-    if [ ${analysis_level} == "build" ]; then
-      annotation_title="ChatGPT Build Level Analysis"
-    fi
-
-    # create annotation file
-    {
-      echo "# ${annotation_title}"
-      echo "---"
-      printf "%s\n" "${content_response}"
-      echo "---"
-    } > "${annotation_file}"
-
-    # Check if the annotation file was created successfully
-    if [ -f "${annotation_file}" ]; then
-      echo "Annotating build with ChatGPT analysis ..."
+  
+    content_response=$(echo "${response}" | jq -r '.choices[0].message.content' | sed 's/^/  /')  
+  
+    if [ -n "${content_response}" ]; then 
+      annotation_file="/tmp/chatgpt_analysis.md"
+      annotation_title="ChatGPT Step Level Analysis"
       if [ ${analysis_level} == "build" ]; then
-        buildkite-agent annotate --style "info" --context "chatgpt-analysis-${BUILDKITE_BUILD_ID}"  < "${annotation_file}"
-      else
-        buildkite-agent annotate --style "info" --context "chatgpt-analysis-${BUILDKITE_JOB_ID}"  < "${annotation_file}"
+        annotation_title="ChatGPT Build Level Analysis"
       fi
-      echo "✅ Annotation created successfully."
-      rm -f "${annotation_file}"
+
+      # create annotation file
+      {
+        echo "### ${annotation_title}"
+        echo "---"
+        printf "%s\n" "${content_response}"
+        echo "---"
+      } > "${annotation_file}"
+
+      # Check if the annotation file was created successfully
+      if [ -f "${annotation_file}" ]; then
+        echo "Annotating build with ChatGPT analysis ..."
+        if [ ${analysis_level} == "build" ]; then
+          buildkite-agent annotate --style "info" --context "chatgpt-analysis-${BUILDKITE_BUILD_ID}"  < "${annotation_file}"
+        else
+          buildkite-agent annotate --style "info" --context "chatgpt-analysis-${BUILDKITE_JOB_ID}"  < "${annotation_file}"
+        fi
+        echo "✅ Annotation created successfully."
+        rm -f "${annotation_file}"
+      else
+        echo -e "ChatGPT analysis in Job ${BUILDKITE_JOB_ID} (${BUILDKITE_LABEL}) failed to generate an annotation file." | buildkite-agent annotate --style "error" --context "chatgpt-analysis-${BUILDKITE_JOB_ID}"
+      fi
     else
-      echo -e "ChatGPT analysis in Job ${BUILDKITE_JOB_ID} (${BUILDKITE_LABEL}) failed to generate an annotation file." | buildkite-agent annotate --style "error" --context "chatgpt-analysis-${BUILDKITE_JOB_ID}"
+      echo -e "ChatGPT analysis in Job ${BUILDKITE_JOB_ID} (${BUILDKITE_LABEL}) failed to generate content." | buildkite-agent annotate --style "error" --context "chatgpt-analysis-${BUILDKITE_JOB_ID}"
     fi
   else
-    echo -e "ChatGPT analysis in Job ${BUILDKITE_JOB_ID} (${BUILDKITE_LABEL}) failed to generate content." | buildkite-agent annotate --style "error" --context "chatgpt-analysis-${BUILDKITE_JOB_ID}"
-  fi
+    echo "ChatGPT analysis failed. Please check the logs for more details."
+  fi 
 
   return 0
 }
