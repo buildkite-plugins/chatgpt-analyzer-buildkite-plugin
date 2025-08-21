@@ -1,9 +1,10 @@
-name: ChatGPT Prompter
-description: Sends a user prompt to ChatGPT
+name: ChatGPT Analyzer
+description: Provide Buildkite Builds/Step analysis using ChatGPT
 author: https://github.com/buildkite-plugins
 requirements:
   - bash
   - curl
+  - jq
 configuration:
   properties:
     api_key:
@@ -12,11 +13,16 @@ configuration:
     buildkite_api_token:
       type: string
       description: The environment variable that the Buildkite API Token is stored in.  
+    analysis_level:
+      type: string
+      description: The level of analysis to perform (e.g., "step", "build").
+      enum: [step, build]
+      default: step
     model:
       type: string
       description: ChatGPT model to use.
-      enum: [gpt-4o-mini, gpt-4, gpt-3.5-turbo]
-      default: gpt-4o-mini 
+      enum: [gpt-5, gpt-5-mini, gpt-5-nano, gpt-4.1, gpt-4.1-mini, gpt-4.1-nano, gpt-4o, gpt-4o-mini,gpt-4]
+      default: gpt-5-nano
     custom_prompt:
       type: string
       description: Additional context to prompt ChatGPT for include in its analysis.

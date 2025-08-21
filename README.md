@@ -1,6 +1,6 @@
-# ChatGPT Prompter Buildkite Plugin [![Build status](https://badge.buildkite.com/d673030645c7f3e7e397affddd97cfe9f93a40547ed17b6dc5.svg)](https://buildkite.com/buildkite/plugins-template)
+# ChatGPT Analyzer Buildkite Plugin [![Build status](https://badge.buildkite.com/d673030645c7f3e7e397affddd97cfe9f93a40547ed17b6dc5.svg)](https://buildkite.com/buildkite/plugins-template)
 
-A Buildkite plugin that allows users to send a prompt to ChatGPT  
+A Buildkite plugin that provides build or step level analysis using ChatGPT.  
 
 ## Requirements
 
@@ -21,7 +21,7 @@ steps:
   - label: "🔍 Prompt ChatGPT to summarise test results"
     command: "npm test"
     plugins:
-      - chatgpt-prompter#v0.0.1: ~
+      - chatgpt-analyzer#v0.0.1: ~
 ```
 
 ### Using Buildkite secrets (recommended)
@@ -41,7 +41,7 @@ steps:
   - label: "🔍 Prompt ChatGPT to summarise build"
     command: echo "Summarise build"
     plugins:
-      - chatgpt-prompter#v0.0.1: ~
+      - chatgpt-analyzer#v0.0.1: ~
 ```
 
 
@@ -60,9 +60,13 @@ The plugin will fail if no OpenAI key is set.
 
 The environment variable that the Buildkite API Token is stored in. Defaults to `BUILDKITE_API_TOKEN`. If the env var is not set, the plugin will show a warning and will default to using step level analysis. The Buildkite API token is used for fetching build information from the Buildkite API to use for build level analysis. The Buildkite API token should have at least `read_builds` and `read_build_logs` [token scopes](https://buildkite.com/docs/apis/managing-api-tokens#token-scopes), otherwise API calls will fail. 
 
+#### `analysis_level` (string)
+
+The level of analysis to perform on the logs. Options: `step`, `build`. If a `buildkite_api_token` is provided, this will fetch job logs and build information. Otherwise, available environment variables will be used.  Defaults to `step`.
+
 #### `model` (string)
 
-The ChatGPT model. Defaults to `GPT-4o mini`.
+The ChatGPT model. Defaults to `GPT 5-nano`.
 
 #### `custom_prompt` (string)
 
@@ -79,10 +83,10 @@ steps:
   - label: "🔍 Prompt ChatGPT to focus on build performance"
     command: "echo template plugin with options"
     plugins:
-      - chatgpt-prompter#v0.0.1:
+      - chatgpt-analyzer#v0.0.1:
           api_key: "$OTHER_OPENAI_API_TOKEN"
           buildkite_api_token: "$OTHER_BUILDKITE_API_TOKEN"
-          model: "gpt-3.5-turbo"
+          model: "gpt-5-nano"
           custom_prompt: "Focus on build performance and optimization opportunities"
         
 ```
