@@ -403,7 +403,6 @@ function send_prompt() {
 
   
     content_response=$(echo "${response}" | jq -r '.choices[0].message.content' | sed 's/^/  /')  
-  
     if [ -n "${content_response}" ]; then 
       annotation_file="/tmp/chatgpt_analysis.md"
       annotation_title="ChatGPT Step Level Analysis"

@@ -34,8 +34,7 @@ echo "Analysis Level: ${ANALYSIS_LEVEL}"
 
 # Summarize build information 
 BUILD_SUMMARY=$(get_build_summary "${BUILDKITE_API_TOKEN}" "${ANALYSIS_LEVEL}") 
-log_success "Done generating summary for this ${ANALYSIS_LEVEL}."
-echo "${BUILD_SUMMARY}"
+log_success "Done generating summary for this ${ANALYSIS_LEVEL}." 
 send_prompt "${API_KEY}" "${BUILD_SUMMARY}" "${MODEL}" "${CUSTOM_PROMPT}" "${ANALYSIS_LEVEL}"
 
 echo "~~~ Done."

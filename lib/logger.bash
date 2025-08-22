@@ -3,7 +3,7 @@ set -euo pipefail
 
 # Functions
 log_section() {
-  echo -e "\n--- $1"
+  echo -e "\n~~~ $1"
 }
 
 log_info() {
