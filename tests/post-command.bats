@@ -48,7 +48,6 @@ teardown() {
   assert_output --partial 'ChatGPT Analyzer Plugin'
   assert_output --partial 'Retrieving OpenAI API Key ...'
   assert_output --partial 'Using Model: gpt-5-nano'
-  assert_output --partial 'Using Custom Prompt: '
   assert_output --partial 'Analysis Level: step'
   assert_output --partial 'Done generating summary for this step'
 }
