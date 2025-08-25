@@ -17,26 +17,26 @@ echo "Retrieving OpenAI API Key ..."
 # Read plugin configuration for OpenAI API Key
 API_KEY=$(get_openai_api_key)
 if [ -z "${API_KEY}" ]; then
-  echo '❌ Error: Missing OpenAI API Key. Please set the API_KEY in your plugin configuration.'
+  log_error 'Missing OpenAI API Key. Please set the API_KEY in your plugin configuration.'
   exit 1
 fi   
 
 echo "Retrieving other plugin configurations ..."
 # Load Plugin configuration
 BUILDKITE_API_TOKEN=$(get_bk_api_token) 
+MODEL=$(plugin_read_config MODEL "gpt-5-nano")
 ANALYSIS_LEVEL=$(plugin_read_config ANALYSIS_LEVEL "step")
-MODEL=$(plugin_read_config MODEL "gpt-4o-mini")
 CUSTOM_PROMPT=$(plugin_read_config CUSTOM_PROMPT "")
 
 echo "Using Model: ${MODEL}"
-echo "Using Custom Prompt: ${CUSTOM_PROMPT:-}"
 echo "Analysis Level: ${ANALYSIS_LEVEL}"
+if [ -n "${CUSTOM_PROMPT}" ]; then
+  echo "Using Custom Prompt: ${CUSTOM_PROMPT}"
+fi
 
-# validating buildkite token
-validate_bk_token "${BUILDKITE_API_TOKEN}" || exit 1
-
-# Analyze build information 
-CHATGPT_ANALYSIS=$(analyse_build_info "${BUILDKITE_API_TOKEN}" "${ANALYSIS_LEVEL}") 
-send_prompt "${API_KEY}" "${CHATGPT_ANALYSIS}" "${MODEL}" "${CUSTOM_PROMPT}" "${ANALYSIS_LEVEL}"
+# Summarize build information 
+BUILD_SUMMARY=$(get_build_summary "${BUILDKITE_API_TOKEN}" "${ANALYSIS_LEVEL}") 
+log_success "Done generating summary for this ${ANALYSIS_LEVEL}." 
+send_prompt "${API_KEY}" "${BUILD_SUMMARY}" "${MODEL}" "${CUSTOM_PROMPT}" "${ANALYSIS_LEVEL}"
 
 echo "~~~ Done."

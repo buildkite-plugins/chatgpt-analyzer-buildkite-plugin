@@ -101,6 +101,11 @@ steps:
 - ⚠️ Partially supported (some combinations cause errors/issues)
 - ❌ Not supported
 
+## Developing
+
+```bash
+docker run --rm -ti -v "${PWD}":/plugin buildkite/plugin-tester:latest
+```
 ## 👩‍💻 Contributing
 
 Your policy on how to contribute to the plugin!

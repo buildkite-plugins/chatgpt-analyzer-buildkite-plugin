@@ -25,4 +25,4 @@ configuration:
       default: gpt-5-nano
     custom_prompt:
       type: string
-      description: Additional context to prompt ChatGPT for include in its analysis.
+      description: Additional context to prompt ChatGPT to include in its analysis.
