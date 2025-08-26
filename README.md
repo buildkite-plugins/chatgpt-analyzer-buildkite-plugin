@@ -108,7 +108,13 @@ docker run --rm -ti -v "${PWD}":/plugin buildkite/plugin-tester:latest
 ```
 ## 👩‍💻 Contributing
 
-Your policy on how to contribute to the plugin!
+We welcome all contributions to improve this plugin! To contribute, please follow these guidelines:
+
+Fork the repository
+Make your changes and ensure that the tests pass.
+Write clear and concise commit messages.
+Submit a pull request.
+By contributing, you agree to license your contributions under the LICENSE file of this repository.
 
 ## 📜 License
 
