@@ -419,8 +419,7 @@ function send_prompt() {
       } > "${annotation_file}"
 
       # Check if the annotation file was created successfully
-      if [ -f "${annotation_file}" ]; then
-        echo "Annotating build with ChatGPT analysis ..."
+      if [ -f "${annotation_file}" ]; then 
         if [ ${analysis_level} == "build" ]; then
           buildkite-agent annotate --style "info" --context "chatgpt-analysis-${BUILDKITE_BUILD_ID}"  < "${annotation_file}"
         else
