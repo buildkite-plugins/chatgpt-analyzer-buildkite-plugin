@@ -94,26 +94,30 @@ steps:
 ## Compatibility
 
 | Elastic Stack | Agent Stack K8s | Hosted (Mac) | Hosted (Linux) | Notes |
-| :-----------: | :-------------: | :----: | :----: |:---- |
-| ? | ? | ? | ? | n/a |
+| :-----------: | :-------------: | :----------: | :------------: | :---- |
+| ✅ | ✅ | ✅ | ✅ |   |
 
-- ✅ Fully supported (all combinations of attributes have been tested to pass)
-- ⚠️ Partially supported (some combinations cause errors/issues)
-- ❌ Not supported
+- ✅ Fully compatible assuming requirements are met
 
 ## Developing
+
+Run tests with
 
 ```bash
 docker run --rm -ti -v "${PWD}":/plugin buildkite/plugin-tester:latest
 ```
+
 ## 👩‍💻 Contributing
 
 We welcome all contributions to improve this plugin! To contribute, please follow these guidelines:
 
-Fork the repository
-Make your changes and ensure that the tests pass.
-Write clear and concise commit messages.
-Submit a pull request.
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes and ensure that the tests pass.
+4. Add tests for new functionality
+5. Ensure all tests pass
+6. Submit a pull request
+
 By contributing, you agree to license your contributions under the LICENSE file of this repository.
 
 ## 📜 License
