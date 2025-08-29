@@ -2,10 +2,8 @@
 
 set -euo pipefail
 
-DIR="$(cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd)"
-
 # shellcheck source=lib/plugin.bash
-. "$DIR/../lib/plugin.bash"
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/plugin.bash"
 
 echo "--- :robot_face: ChatGPT Analyzer Plugin"
 

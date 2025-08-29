@@ -1,4 +1,4 @@
-# ChatGPT Analyzer Buildkite Plugin [![Build status](https://badge.buildkite.com/d673030645c7f3e7e397affddd97cfe9f93a40547ed17b6dc5.svg)](https://buildkite.com/buildkite/plugins-template)
+# ChatGPT Analyzer Buildkite Plugin [![Build status](https://badge.buildkite.com/d371f30665401423d3a035ffbb760dbf7c5ac1feb3467b7730.svg)](https://buildkite.com/buildkite/plugins-chatgpt-analyzer-plugin)
 
 A Buildkite plugin that provides build or step level analysis using ChatGPT.  
 
@@ -94,26 +94,30 @@ steps:
 ## Compatibility
 
 | Elastic Stack | Agent Stack K8s | Hosted (Mac) | Hosted (Linux) | Notes |
-| :-----------: | :-------------: | :----: | :----: |:---- |
-| ? | ? | ? | ? | n/a |
+| :-----------: | :-------------: | :----------: | :------------: | :---- |
+| ✅ | ✅ | ✅ | ✅ |   |
 
-- ✅ Fully supported (all combinations of attributes have been tested to pass)
-- ⚠️ Partially supported (some combinations cause errors/issues)
-- ❌ Not supported
+- ✅ Fully compatible assuming requirements are met
 
 ## Developing
+
+Run tests with
 
 ```bash
 docker run --rm -ti -v "${PWD}":/plugin buildkite/plugin-tester:latest
 ```
+
 ## 👩‍💻 Contributing
 
 We welcome all contributions to improve this plugin! To contribute, please follow these guidelines:
 
-Fork the repository
-Make your changes and ensure that the tests pass.
-Write clear and concise commit messages.
-Submit a pull request.
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes and ensure that the tests pass.
+4. Add tests for new functionality
+5. Ensure all tests pass
+6. Submit a pull request
+
 By contributing, you agree to license your contributions under the LICENSE file of this repository.
 
 ## 📜 License
