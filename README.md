@@ -1,4 +1,4 @@
-# ChatGPT Analyzer Buildkite Plugin [![Build status](https://badge.buildkite.com/d673030645c7f3e7e397affddd97cfe9f93a40547ed17b6dc5.svg)](https://buildkite.com/buildkite/plugins-template)
+# ChatGPT Analyzer Buildkite Plugin [![Build status](https://badge.buildkite.com/d673030645c7f3e7e397affddd97cfe9f93a40547ed17b6dc5.svg)](https://buildkite.com/buildkite/plugins-chatgpt-analyzer-plugin)
 
 A Buildkite plugin that provides build or step level analysis using ChatGPT.  
 

@@ -5,7 +5,6 @@ steps:
           files:
             - hooks/**
             - lib/**
-            - tests/**
 
   - label: ":test_tube: Tests"
     plugins:
@@ -17,5 +16,4 @@ steps:
     plugins:
       - plugin-linter#v3.3.0:
           id: chatgpt-analyzer
-
             
