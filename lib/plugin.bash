@@ -1,7 +1,10 @@
 #!/bin/bash
 set -euo pipefail
 
+# Load log utility
+# shellcheck source=lib/logger.bash
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/logger.bash" 
+
 
 PLUGIN_PREFIX="CHATGPT_ANALYZER"
 
@@ -82,12 +85,10 @@ function validate_required_tools() {
 
 function get_openai_api_key() { 
   local api_key=""
-
   api_key=$(plugin_read_config API_KEY "")  
+
   if [ -z "${api_key}" ]; then
       api_key="${OPENAI_API_KEY:-}"
-    else
-      api_key="${api_key}"
   fi
 
   # Trim any whitespace that might be causing issues
@@ -97,16 +98,15 @@ function get_openai_api_key() {
 
 function get_bk_api_token() {
   local bk_token=""
-
   bk_token=$(plugin_read_config BUILDKITE_API_TOKEN "")
+
   if [ -z "${bk_token}" ]; then
     # the token is not set, so we assume it is not required
     bk_token="${BUILDKITE_API_TOKEN:-}"
-  else
-    bk_token="${bk_token}"
   fi
+
   # Trim any whitespace that might be causing issues
-  bk_token=$(echo "$bk_token" | tr -d '[:space:]')
+  bk_token=$(echo "${bk_token}" | tr -d '[:space:]')
   echo "${bk_token}"
 }
 
@@ -135,7 +135,7 @@ function get_job_logs() {
     s/\\r\\n/\n/g
     s/\\r/\n/g
     s/\\n/\n/g
-    /~~~ Running plugin chatgpt-prompter post-command hook/,$d' "$job_logs_content" > "$job_logs_trimmed"
+    /~~~ Running plugin chatgpt-analyzer post-command hook/,$d' "$job_logs_content" > "$job_logs_trimmed"
       tail -n "${max_lines}" "${job_logs_trimmed}" >> "${output_file}" 
       #cleanup other temp files
       rm -f "${job_logs_trimmed}"      
@@ -219,13 +219,18 @@ Build Finished At: ${finished_at}"
         : > "${log_file}"
 
         for job_id in ${job_ids}; do
-          local job_name=$(jq -r --arg job_id "${job_id}" '.jobs[] | select(.id == $job_id) | .name // empty' "${build_details_file}")
-          echo -e "\n===JOB:  ${job_name} (${job_id})===\n"  >> "${log_file}"
+          local job_name
+          local job_state
+          local exit_status
 
-          local job_state=$(jq -r --arg job_id "${job_id}" '.jobs[] | select(.id == $job_id) | .state // empty' "${build_details_file}")
-          local exit_status=$(jq -r --arg job_id "${job_id}" '.jobs[] | select(.id == $job_id) | .exit_status // empty' "${build_details_file}")
+          job_name=$(jq -r --arg job_id "${job_id}" '.jobs[] | select(.id == $job_id) | .name // empty' "${build_details_file}")
+          echo -e "\n===JOB:  ${job_name} (${job_id})===\n"  >> "${log_file}"
+          
+          job_state=$(jq -r --arg job_id "${job_id}" '.jobs[] | select(.id == $job_id) | .state // empty' "${build_details_file}")
+          exit_status=$(jq -r --arg job_id "${job_id}" '.jobs[] | select(.id == $job_id) | .exit_status // empty' "${build_details_file}")
           echo "Job State: ${job_state}
 Exit Status: ${exit_status}" >> "${log_file}"
+          
           get_job_logs "${bk_api_token}" "${job_id}" "${log_file}" 1000
         done
       fi
@@ -406,7 +411,7 @@ function send_prompt() {
     if [ -n "${content_response}" ]; then 
       annotation_file="/tmp/chatgpt_analysis.md"
       annotation_title="ChatGPT Step Level Analysis"
-      if [ ${analysis_level} == "build" ]; then
+      if [ "${analysis_level}" == "build" ]; then
         annotation_title="ChatGPT Build Level Analysis"
       fi
 
@@ -420,7 +425,7 @@ function send_prompt() {
 
       # Check if the annotation file was created successfully
       if [ -f "${annotation_file}" ]; then 
-        if [ ${analysis_level} == "build" ]; then
+        if [ "${analysis_level}" == "build" ]; then
           buildkite-agent annotate --style "info" --context "chatgpt-analysis-${BUILDKITE_BUILD_ID}"  < "${annotation_file}"
         else
           buildkite-agent annotate --style "info" --context "chatgpt-analysis-${BUILDKITE_JOB_ID}"  < "${annotation_file}"
