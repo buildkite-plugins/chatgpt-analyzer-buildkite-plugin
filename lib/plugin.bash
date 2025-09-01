@@ -135,7 +135,7 @@ function get_job_logs() {
     s/\\r\\n/\n/g
     s/\\r/\n/g
     s/\\n/\n/g
-    /~~~ Running plugin chatgpt-prompter post-command hook/,$d' "$job_logs_content" > "$job_logs_trimmed"
+    /~~~ Running plugin chatgpt-analyzer post-command hook/,$d' "$job_logs_content" > "$job_logs_trimmed"
       tail -n "${max_lines}" "${job_logs_trimmed}" >> "${output_file}" 
       #cleanup other temp files
       rm -f "${job_logs_trimmed}"      
