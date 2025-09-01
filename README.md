@@ -72,6 +72,14 @@ The ChatGPT model. Defaults to `GPT 5-nano`.
 
 Additional context to include in ChatGPT's analysis.   
 
+#### `compare_builds` (boolean)
+
+Enables build time comparison from previous builds in the analysis. Defaults to `false`.
+
+#### `build_comparison_range` (integer)
+
+The number of previous builds to include when comparing build times during analysis. This parameter is only used when `compare_builds` is set to `true`. Defaults to `5`.
+
 ## Examples
 
 ## Provide Additional Context  
