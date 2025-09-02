@@ -48,7 +48,7 @@ teardown() {
   assert_output --partial 'ChatGPT Analyzer Plugin'
   assert_output --partial 'Retrieving OpenAI API Key ...'
   assert_output --partial 'Using Model: gpt-5-nano'
-  assert_output --partial 'Analysis Level: step'
+  assert_output --partial 'Analysis Level: step' 
   assert_output --partial 'Done generating summary for this step'
 }
 
@@ -56,6 +56,8 @@ teardown() {
   export BUILDKITE_PLUGIN_CHATGPT_ANALYZER_ANALYSIS_LEVEL='build'
   export BUILDKITE_PLUGIN_CHATGPT_ANALYZER_MODEL='gpt-5'
   export BUILDKITE_PLUGIN_CHATGPT_ANALYZER_CUSTOM_PROMPT='Custom prompt. This is an additional Custom Prompt '
+  export BUILDKITE_PLUGIN_CHATGPT_ANALYZER_COMPARE_BUILDS='true'
+  export BUILDKITE_PLUGIN_CHATGPT_ANALYZER_BUILD_COMPARISON_RANGE=10
 
   run "$PWD"/hooks/post-command
 
@@ -63,8 +65,9 @@ teardown() {
   assert_output --partial 'ChatGPT Analyzer Plugin'
   assert_output --partial 'Retrieving OpenAI API Key ...'
   assert_output --partial 'Using Model: gpt-5'
-  assert_output --partial 'Using Custom Prompt: Custom prompt. This is an additional Custom Prompt '
   assert_output --partial 'Analysis Level: build'
+  assert_output --partial 'Using Custom Prompt: Custom prompt. This is an additional Custom Prompt '
+  assert_output --partial 'Build Comparison: ENABLED. Comparing with last 10 builds.'
   assert_output --partial 'Done generating summary for this build'
 }
 

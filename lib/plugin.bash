@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # Load log utility
-# shellcheck source=lib/logger.bash
+# shellcheck disable=SC1091
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/logger.bash" 
 
 
@@ -193,7 +193,7 @@ function get_build_summary() {
   local build_info
   build_info=$(get_build_environment_details "${analysis_level}")
 
-  local current_build_time=""
+  local current_build_time="0"
   local current_time_note=""
 
   # prepare retrieving build or job logs
@@ -244,8 +244,7 @@ Build Finished At: ${finished_at}"
         if [ -n "${start_epoch}" ] && [ -n "${now_epoch}" ]; then
           current_build_time=$((now_epoch - start_epoch))
           build_info="${build_info}
-  Build Duration: ${current_build_time}s 
-  ($current_time_note)"
+  Build Duration: ${current_build_time}s"
         fi
       fi 
 
@@ -277,19 +276,6 @@ Exit Status: ${exit_status}" >> "${log_file}"
     fi
   fi 
   
-  # build time comparison if enabled
-  if [ "${compare_builds}" == "true" ] && [ -n "${current_build_time}" ]; then
-    if [ ${analysis_level} == "build" ]  ]; then
-        local build_analysis_file="/tmp/build_time_analysis_${BUILDKITE_BUILD_ID}.txt" 
-        local buildlevel_time_analysis
-        buildlevel_time_analysis=$(buildlevel_comparison "${bk_api_token}" "${comparison_range}" "${current_build_time}" "${build_analysis_file}")
-        build_info="${build_info}
-
-${buildlevel_time_analysis}"
-        rm -f "${build_analysis_file}"
-    fi
-  fi
-
   local logs
   if ! logs=$(< "${log_file}"); then
     echo "Error: Failed to read log file: ${log_file}" >&2
@@ -317,9 +303,35 @@ To improve log analysis, ensure that the BUILDKITE_API_TOKEN is set with appropr
     return
   fi
 
+  # build time comparison if enabled
+  local build_history_analysis
+  build_history_analysis=""
+  if [ "${compare_builds}" == "true" ] && [ -n "${current_build_time}" ]; then
+    if [ "${analysis_level}" == "build" ]; then
+        local build_analysis_file="/tmp/build_time_analysis_${BUILDKITE_BUILD_ID}.txt" 
+        if create_buildlevel_comparison "${bk_api_token}" "${comparison_range}" "${current_build_time}" "${current_time_note}" "${build_analysis_file}"; then
+          build_history_analysis="$(< "${build_analysis_file}")"
+        fi
+        rm -f "${build_analysis_file}"
+    fi
+  fi
+
+  local base_prompt
+  if [ "${analysis_level}" = "build" ]; then
+    base_prompt="You are an expert software engineer and DevOps specialist. Please analyze this Buildkite build output (containing logs from multiple jobs) and provide insights."
+  else
+    base_prompt="You are an expert software engineer and DevOps specialist. Please analyze this Buildkite step output and provide insights."
+  fi
+
+  # Add build history time analysis if available
+  if [ -n "${build_history_analysis}" ]; then
+    base_prompt="${base_prompt}
+
+${build_history_analysis}"
+  fi  
 
   if [ "${analysis_level}" = "build" ]; then
-    base_prompt="Analysis Level: Build Level (multiple jobs)
+    base_prompt="${base_prompt}    
 Build Information:
 ${build_info}
 
@@ -336,7 +348,8 @@ Please provide:
 Focus on being practical and actionable. "
 
   else
-    base_prompt="Analysis Level: Step Level (current job)
+    base_prompt="${base_prompt}    
+
 Step Information:
 ${build_info}
 
@@ -355,18 +368,19 @@ Please provide:
   echo "${base_prompt}"
 }
  
-function buildlevel_comparison() {
+function create_buildlevel_comparison() {
   local bk_api_token="$1" 
   local comparison_range="${2:-5}"
   local current_build_time="$3"
-  local build_analysis_file="$4"
+  local current_build_note="$4"
+  local build_analysis_file="$5"
 
   local page_count=$((comparison_range + 10))
-  local past_dates
-  if [[ "$(uname)" == "Darwin" ]] || [ "$(uname)" == *"BSD"* ]; then
-    past_dates=$(date -v-"${comparison_range}"d '+%Y-%m-%d')
+  local past_dates 
+  if [[ "$(uname)" == "Darwin" || "$(uname)" == *"BSD"* ]]; then
+    past_dates=$(date -v-30d '+%Y-%m-%d')
   else
-    past_dates=$(date -d "-${comparison_range} days" '+%Y-%m-%d')
+    past_dates=$(date -d '30 days ago' '+%Y-%m-%d')
   fi
 
  
@@ -381,7 +395,7 @@ function buildlevel_comparison() {
     builds_url="${builds_url}&branch=${BUILDKITE_BRANCH}"
   fi
 
-  echo "Build url: ${builds_url}"
+  # Exclude current build and only include finished builds
   if curl -s -f -H "Authorization: Bearer ${bk_api_token}" "${builds_url}" > "${build_history_file}" 2>/dev/null; then
     # Successfully retrieved build history
       local filtered_builds
@@ -401,17 +415,19 @@ function buildlevel_comparison() {
     # file not found, exit
     return 1
   fi
- 
-  local build_analysis_file
-  build_analysis_file="/tmp/build_time_analysis_${BUILDKITE_BUILD_ID}.json" 
+
   { 
     echo "Build Time Comparison Analysis"
-    echo "Current Build: ${BUILDKITE_BUILD_NUMBER} (${current_build_time}s)"
+    echo "Current Build: #${BUILDKITE_BUILD_NUMBER}, Duration: ${current_build_time}s"
+    # Add timing note if build is still running
+    if [ -n "${current_build_note}" ]; then
+      echo "${current_build_note}"
+    fi
+    echo ""
     echo "Recent Build History:"
     # Format build information
-    jq -r '.[] | "Build #\(.number): \(.finished_at | sub("\\.[0-9]+Z$"; "Z") | fromdateiso8601 - \(.started_at | sub("\\.[0-9]+Z$"; "Z") | fromdateiso8601))s (\(.state)) - \(.message // "No message" | .[0:60])"' "${build_history_file}" 2>/dev/null
+   jq -r '.[] | " Build #\(.number): \((.finished_at | sub("\\.[0-9]+Z$"; "Z") | fromdateiso8601) - (.started_at | sub("\\.[0-9]+Z$"; "Z") | fromdateiso8601))s (\(.state)) - \(.message // "No message" | .[0:60])"' "${build_history_file}" 2>/dev/null
 
-    echo ""
     echo "Build Time Statistics:"
 
     # Calculate average, min, max for builds
@@ -445,9 +461,14 @@ function buildlevel_comparison() {
     echo -e "\n---\n"
   } > "${build_analysis_file}"
 
-  rm -f "${build_history_file}"
-  echo "$(cat ${build_analysis_file})"
-  return 0
+  #cleanup temp file
+  rm -f "${build_history_file}" 
+
+  if [ -s "${build_analysis_file}" ]; then
+    return 0
+  fi
+ 
+  return 1
 } 
 
 
@@ -456,7 +477,7 @@ function get_epoch_time() {
     local stripped_datetime="${datetime%.???Z}"
 
     local epoch_time
-    if [[ "$(uname)" == "Darwin" ]] || [ "$(uname)" == *"BSD"* ]; then
+    if [[ "$(uname)" == "Darwin" || "$(uname)" == *"BSD"* ]]; then
         epoch_time=$(date -jf "%Y-%m-%dT%H:%M:%S" "$stripped_datetime" +%s 2>/dev/null || echo "")
     else
         epoch_time=$(date -d "${datetime}" +%s 2>/dev/null || echo "")
