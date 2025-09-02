@@ -8,9 +8,9 @@ steps:
 
   - label: ":test_tube: Tests"
     plugins:
-      - docker-compose#v5.10.0:
-          run: tests
-          config: compose.yaml
+      - plugin-tester#v1.2.0:
+          folders:
+            - tests
 
   - label: ":sparkles: Lint"
     plugins:
