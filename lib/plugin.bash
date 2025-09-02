@@ -307,13 +307,11 @@ To improve log analysis, ensure that the BUILDKITE_API_TOKEN is set with appropr
   local build_history_analysis
   build_history_analysis=""
   if [ "${compare_builds}" == "true" ] && [ -n "${current_build_time}" ]; then
-    if [ "${analysis_level}" == "build" ]; then
-        local build_analysis_file="/tmp/build_time_analysis_${BUILDKITE_BUILD_ID}.txt" 
-        if create_buildlevel_comparison "${bk_api_token}" "${comparison_range}" "${current_build_time}" "${current_time_note}" "${build_analysis_file}"; then
-          build_history_analysis="$(< "${build_analysis_file}")"
-        fi
-        rm -f "${build_analysis_file}"
+    local build_analysis_file="/tmp/build_time_analysis_${BUILDKITE_BUILD_ID}.txt" 
+    if create_buildlevel_comparison "${bk_api_token}" "${comparison_range}" "${current_build_time}" "${current_time_note}" "${build_analysis_file}"; then
+      build_history_analysis="$(< "${build_analysis_file}")"
     fi
+    rm -f "${build_analysis_file}"
   fi
 
   local base_prompt
