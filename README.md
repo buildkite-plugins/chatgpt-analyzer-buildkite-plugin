@@ -21,7 +21,7 @@ steps:
   - label: "🔍 Prompt ChatGPT to summarise test results"
     command: "npm test"
     plugins:
-      - chatgpt-analyzer#v0.0.1: ~
+      - chatgpt-analyzer#v1.0.0: ~
 ```
 
 ### Using Buildkite secrets (recommended)
@@ -41,7 +41,7 @@ steps:
   - label: "🔍 Prompt ChatGPT to summarise build"
     command: echo "Summarise build"
     plugins:
-      - chatgpt-analyzer#v0.0.1: ~
+      - chatgpt-analyzer#v1.0.0: ~
 ```
 
 
@@ -89,13 +89,30 @@ If you want to provide additional context or instructions to the default build s
 ```yaml
 steps:
   - label: "🔍 Prompt ChatGPT to focus on build performance"
-    command: "echo template plugin with options"
+    command: "npm test"
     plugins:
-      - chatgpt-analyzer#v0.0.1:
+      - chatgpt-analyzer#v1.0.0:
           api_key: "$OTHER_OPENAI_API_TOKEN"
           buildkite_api_token: "$OTHER_BUILDKITE_API_TOKEN"
           model: "gpt-5-nano"
           custom_prompt: "Focus on build performance and optimization opportunities"
+        
+```
+
+## Include previous builds in Build Analysis  
+
+If you want to provide additional context or instructions to the default build summary, provide a `custom_prompt` parameter to the plugin. 
+
+```yaml
+steps:
+  - label: "🔍 Prompt ChatGPT to focus on comparison with previous builds"
+    command: "npm test"
+    plugins:
+      - chatgpt-analyzer#v1.0.0:
+          analysis_level: build
+          compare_builds:  true
+          build_comparison_range: 10
+          custom_prompt: "Focus on build performance comparing with previous builds"
         
 ```
 
