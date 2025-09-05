@@ -40,7 +40,7 @@ teardown() {
 
   assert_success
   assert_output --partial 'ChatGPT Analyzer Plugin'
-  assert_output --partial 'Missing OpenAI API Key' 
+  assert_output --partial 'OpenAI API Key not found' 
 }
 
 @test "Minimal Configuration" {

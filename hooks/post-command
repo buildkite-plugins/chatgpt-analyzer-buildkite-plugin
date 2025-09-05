@@ -14,8 +14,8 @@ validate_required_tools || exit 1
 # Read plugin configuration for OpenAI API Key
 API_KEY=$(get_openai_api_key)
 if [ -z "${API_KEY}" ]; then
-  log_warning 'Missing OpenAI API Key. Skipping ChatGPT Analysis. ❌'
-  echo -e "ChatGPT Analyzer Plugin: Missing OpenAI API Key. Skipping analysis." | buildkite-agent annotate  --style "warning" --context "chatgpt-analysis-${BUILDKITE_JOB_ID}" 
+  log_warning 'OpenAI API Key not found. Skipping ChatGPT Analysis. ❌'
+  echo -e "ChatGPT Analyzer Plugin: Skipping analysis - OpenAI API Key not found." | buildkite-agent annotate  --style "warning" --context "chatgpt-analysis-${BUILDKITE_JOB_ID}" 
   exit 0
 else
   echo "OpenAI API Key found. ✅"
