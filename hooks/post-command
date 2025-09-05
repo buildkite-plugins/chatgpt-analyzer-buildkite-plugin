@@ -25,6 +25,8 @@ BUILDKITE_API_TOKEN=$(get_bk_api_token)
 MODEL=$(plugin_read_config MODEL "gpt-5-nano")
 ANALYSIS_LEVEL=$(plugin_read_config ANALYSIS_LEVEL "step")
 CUSTOM_PROMPT=$(plugin_read_config CUSTOM_PROMPT "")
+COMPARE_BUILDS=$(plugin_read_config COMPARE_BUILDS "false")
+COMPARISON_RANGE=$(plugin_read_config BUILD_COMPARISON_RANGE "5")
 
 echo "Using Model: ${MODEL}"
 echo "Analysis Level: ${ANALYSIS_LEVEL}"
@@ -32,8 +34,15 @@ if [ -n "${CUSTOM_PROMPT}" ]; then
   echo "Using Custom Prompt: ${CUSTOM_PROMPT}"
 fi
 
+if [ "${COMPARE_BUILDS}" = "true" ]; then
+  echo "Build Comparison: ENABLED. Comparing with last ${COMPARISON_RANGE} builds."
+else
+  echo "Build Comparison: Disabled."
+fi
+
 # Summarize build information 
-BUILD_SUMMARY=$(get_build_summary "${BUILDKITE_API_TOKEN}" "${ANALYSIS_LEVEL}") 
+BUILD_SUMMARY=$(get_build_summary "${BUILDKITE_API_TOKEN}" "${ANALYSIS_LEVEL}" "${COMPARE_BUILDS}" "${COMPARISON_RANGE}")
+
 log_success "Done generating summary for this ${ANALYSIS_LEVEL}." 
 send_prompt "${API_KEY}" "${BUILD_SUMMARY}" "${MODEL}" "${CUSTOM_PROMPT}" "${ANALYSIS_LEVEL}"
 

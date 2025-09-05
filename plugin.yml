@@ -26,3 +26,11 @@ configuration:
     custom_prompt:
       type: string
       description: Additional context to prompt ChatGPT to include in its analysis.
+    compare_builds:
+      type: boolean
+      description: Whether to compare builds in the analysis.
+      default: false
+    build_comparison_range:
+      type: integer
+      description: The range of builds to compare.
+      default: 5

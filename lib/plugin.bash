@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # Load log utility
-# shellcheck source=lib/logger.bash
+# shellcheck disable=SC1091
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/logger.bash" 
 
 
@@ -79,6 +79,11 @@ function validate_required_tools() {
     log_error "curl is not installed. Please install curl to make API requests." >&2
     errors=$((errors + 1))
   fi
+
+  if ! command -v date &> /dev/null; then
+    log_error "date command not found. Please make sure the environment PATH is able to locate the command or the agent has the proper permissions." >&2
+    errors=$((errors + 1))
+  fi  
 
   return ${errors}
 }
@@ -182,10 +187,14 @@ Command Exit status: ${BUILDKITE_COMMAND_EXIT_STATUS:-0}"
 function get_build_summary() {
   local bk_api_token="$1"
   local analysis_level="$2"
+  local compare_builds="${3:-false}"
+  local comparison_range="${4:-5}"  
 
   local build_info
   build_info=$(get_build_environment_details "${analysis_level}")
 
+  local current_build_time="0"
+  local current_time_note=""
 
   # prepare retrieving build or job logs
   local default_max_lines=1000  
@@ -206,6 +215,7 @@ function get_build_summary() {
     local build_url="https://api.buildkite.com/v2/organizations/${BUILDKITE_ORGANIZATION_SLUG}/pipelines/${BUILDKITE_PIPELINE_SLUG}/builds/${BUILDKITE_BUILD_NUMBER}"
 
     if curl -s -f -H "Authorization: Bearer ${bk_api_token}" "${build_url}" > "${build_details_file}" 2>/dev/null; then
+
       local started_at finished_at
       started_at=$(jq -r '.started_at // empty' "${build_details_file}" 2>/dev/null)
       finished_at=$(jq -r '.finished_at // empty' "${build_details_file}" 2>/dev/null)
@@ -213,6 +223,32 @@ function get_build_summary() {
 Build Started At: ${started_at}
 Build Finished At: ${finished_at}"
 
+
+      #check and calculate build time if build has finished
+      if [ -n "${started_at}" ] && [ -n "${finished_at}" ] && [ "${finished_at}" != "null" ]; then
+        local start_epoch finish_epoch
+        start_epoch=$(get_epoch_time "${started_at}")
+        finish_epoch=$(get_epoch_time "${finished_at}")
+        if [ -n "${start_epoch}" ] && [ -n "${finish_epoch}" ]; then
+          current_build_time=$((finish_epoch - start_epoch))
+          build_info="${build_info}
+  Build Duration: ${current_build_time}s"
+        fi
+      elif [ -n "${started_at}" ] && { [ -z "${finished_at}" ] || [ "${finished_at}" = "null" ]; }; then
+        # build is still running, compute partial running time
+        current_time_note="Note: Build is still running. This is the partial build duration."
+        local start_epoch now_epoch
+        start_epoch=$(get_epoch_time "${started_at}")
+        now_epoch=$(date +%s)
+
+        if [ -n "${start_epoch}" ] && [ -n "${now_epoch}" ]; then
+          current_build_time=$((now_epoch - start_epoch))
+          build_info="${build_info}
+  Build Duration: ${current_build_time}s"
+        fi
+      fi 
+
+      # Get and combine build job logs
       job_ids=$(jq -r '.jobs[].id // empty' "${build_details_file}" 2>/dev/null)
       if [ -n "${job_ids}" ]; then
         # Create a combined job log files
@@ -239,8 +275,7 @@ Exit Status: ${exit_status}" >> "${log_file}"
     rm -f "${build_details_file}"
     fi
   fi 
-   
-
+  
   local logs
   if ! logs=$(< "${log_file}"); then
     echo "Error: Failed to read log file: ${log_file}" >&2
@@ -268,9 +303,33 @@ To improve log analysis, ensure that the BUILDKITE_API_TOKEN is set with appropr
     return
   fi
 
+  # build time comparison if enabled
+  local build_history_analysis
+  build_history_analysis=""
+  if [ "${compare_builds}" == "true" ] && [ -n "${current_build_time}" ]; then
+    local build_analysis_file="/tmp/build_time_analysis_${BUILDKITE_BUILD_ID}.txt" 
+    if create_buildlevel_comparison "${bk_api_token}" "${comparison_range}" "${current_build_time}" "${current_time_note}" "${build_analysis_file}"; then
+      build_history_analysis="$(< "${build_analysis_file}")"
+    fi
+    rm -f "${build_analysis_file}"
+  fi
+
+  local base_prompt
+  if [ "${analysis_level}" = "build" ]; then
+    base_prompt="You are an expert software engineer and DevOps specialist. Please analyze this Buildkite build output (containing logs from multiple jobs) and provide insights."
+  else
+    base_prompt="You are an expert software engineer and DevOps specialist. Please analyze this Buildkite step output and provide insights."
+  fi
+
+  # Add build history time analysis if available
+  if [ -n "${build_history_analysis}" ]; then
+    base_prompt="${base_prompt}
+
+${build_history_analysis}"
+  fi  
 
   if [ "${analysis_level}" = "build" ]; then
-    base_prompt="Analysis Level: Build Level (multiple jobs)
+    base_prompt="${base_prompt}    
 Build Information:
 ${build_info}
 
@@ -287,7 +346,8 @@ Please provide:
 Focus on being practical and actionable. "
 
   else
-    base_prompt="Analysis Level: Step Level (current job)
+    base_prompt="${base_prompt}    
+
 Step Information:
 ${build_info}
 
@@ -304,6 +364,124 @@ Please provide:
   # Clean up
   rm -f "${log_file}"
   echo "${base_prompt}"
+}
+ 
+function create_buildlevel_comparison() {
+  local bk_api_token="$1" 
+  local comparison_range="${2:-5}"
+  local current_build_time="$3"
+  local current_build_note="$4"
+  local build_analysis_file="$5"
+
+  local page_count=$((comparison_range + 10))
+  local past_dates 
+  if [[ "$(uname)" == "Darwin" || "$(uname)" == *"BSD"* ]]; then
+    past_dates=$(date -v-30d '+%Y-%m-%d')
+  else
+    past_dates=$(date -d '30 days ago' '+%Y-%m-%d')
+  fi
+
+ 
+  local builds_url
+  local build_history_file
+
+  builds_url="https://api.buildkite.com/v2/organizations/${BUILDKITE_ORGANIZATION_SLUG}/pipelines/${BUILDKITE_PIPELINE_SLUG}/builds?per_page=${page_count}&finished_from=${past_dates}"
+  build_history_file="/tmp/build_history_${BUILDKITE_BUILD_ID}.json"
+
+  #filter builds from the same branch if set
+  if [ -n "${BUILDKITE_BRANCH}" ]; then
+    builds_url="${builds_url}&branch=${BUILDKITE_BRANCH}"
+  fi
+
+  # Exclude current build and only include finished builds
+  if curl -s -f -H "Authorization: Bearer ${bk_api_token}" "${builds_url}" > "${build_history_file}" 2>/dev/null; then
+    # Successfully retrieved build history
+      local filtered_builds
+      filtered_builds=$(jq --arg current_build "${BUILDKITE_BUILD_NUMBER}" '
+        [.[] | select(.number != ($current_build | tonumber) and (.state != "running" and .state != "scheduled" and .state != "creating" and .state != "canceling" and .state != "failing" and .state != "blocked"))]
+        | sort_by(.number)
+        | reverse
+        | .[:'"${comparison_range}"']' "${build_history_file}" 2>/dev/null)
+
+      if [ -n "${filtered_builds}" ] && [ "${filtered_builds}" != "[]" ]; then
+        echo "${filtered_builds}" > "${build_history_file}"
+      fi
+  fi
+
+
+  if [ ! -f "${build_history_file}" ]; then
+    # file not found, exit
+    return 1
+  fi
+
+  { 
+    echo "Build Time Comparison Analysis"
+    echo "Current Build: #${BUILDKITE_BUILD_NUMBER}, Duration: ${current_build_time}s"
+    # Add timing note if build is still running
+    if [ -n "${current_build_note}" ]; then
+      echo "${current_build_note}"
+    fi
+    echo ""
+    echo "Recent Build History:"
+    # Format build information
+   jq -r '.[] | " Build #\(.number): \((.finished_at | sub("\\.[0-9]+Z$"; "Z") | fromdateiso8601) - (.started_at | sub("\\.[0-9]+Z$"; "Z") | fromdateiso8601))s (\(.state)) - \(.message // "No message" | .[0:60])"' "${build_history_file}" 2>/dev/null
+
+    echo "Build Time Statistics:"
+
+    # Calculate average, min, max for builds
+    local times
+    times=$(jq -r '.[] | (.finished_at | sub("\\.[0-9]+Z$"; "Z") | fromdateiso8601) - (.started_at | sub("\\.[0-9]+Z$"; "Z") | fromdateiso8601)' "${build_history_file}" 2>/dev/null)
+
+
+    if [ -n "${times}" ]; then
+      local avg min max count
+      avg=$(echo "${times}" | awk '{sum+=$1} END {printf "%.0f", sum/NR}')
+      min=$(echo "${times}" | sort -n | head -1)
+      max=$(echo "${times}" | sort -n | tail -1)
+      count=$(echo "${times}" | wc -l)
+
+      echo "- Average: ${avg}s (over ${count} builds)"
+      echo "- Fastest: ${min}s"
+      echo "- Slowest: ${max}s"
+      echo "- Current vs Average: $((current_build_time - avg))s difference"
+
+      # Trend analysis
+      if [ "${current_build_time}" -gt $((avg + 60)) ]; then
+        echo "- Trend: ⚠️  Current build is significantly slower than average"
+      elif [ "${current_build_time}" -gt "${avg}" ]; then
+        echo "- Trend: 📈 Current build is slower than average"
+      elif [ "${current_build_time}" -lt $((avg - 60)) ]; then
+        echo "- Trend: ⚡ Current build is significantly faster than average"
+      else
+        echo "- Trend: ✅ Current build time is normal"
+      fi
+    fi
+    echo -e "\n---\n"
+  } > "${build_analysis_file}"
+
+  #cleanup temp file
+  rm -f "${build_history_file}" 
+
+  if [ -s "${build_analysis_file}" ]; then
+    return 0
+  fi
+ 
+  return 1
+} 
+
+
+function get_epoch_time() {
+    local datetime="$1"    
+    local stripped_datetime="${datetime%.???Z}"
+
+    local epoch_time
+    if [[ "$(uname)" == "Darwin" || "$(uname)" == *"BSD"* ]]; then
+        epoch_time=$(date -jf "%Y-%m-%dT%H:%M:%S" "$stripped_datetime" +%s 2>/dev/null || echo "")
+    else
+        epoch_time=$(date -d "${datetime}" +%s 2>/dev/null || echo "")
+    fi
+    
+    echo "${epoch_time}"
 }
 
 function format_payload() {
