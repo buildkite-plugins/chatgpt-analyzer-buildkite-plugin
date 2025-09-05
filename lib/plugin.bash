@@ -608,17 +608,21 @@ function send_prompt() {
         else
           buildkite-agent annotate --style "info" --context "chatgpt-analysis-${BUILDKITE_JOB_ID}"  < "${annotation_file}"
         fi
-        echo "✅ Annotation created successfully."
+        echo "Annotation created successfully. ✅"
+        echo "ChatGPT Analysis complete. ✅"
         rm -f "${annotation_file}"
       else
         echo -e "ChatGPT analysis in Job ${BUILDKITE_JOB_ID} (${BUILDKITE_LABEL}) failed to generate an annotation file." | buildkite-agent annotate --style "error" --context "chatgpt-analysis-${BUILDKITE_JOB_ID}"
+        echo "ChatGPT Analysis failed. Annotation file generation failed. ❌"
       fi
     else
       echo -e "ChatGPT analysis in Job ${BUILDKITE_JOB_ID} (${BUILDKITE_LABEL}) failed to generate content." | buildkite-agent annotate --style "error" --context "chatgpt-analysis-${BUILDKITE_JOB_ID}"
+      echo "ChatGPT Analysis failed. API content response does not look valid. ❌"
     fi
   else
-    echo "ChatGPT analysis failed. Please check the logs for more details."
-  fi 
+    echo -e "ChatGPT analysis in Job ${BUILDKITE_JOB_ID} (${BUILDKITE_LABEL}) failed to send summary to ChatGPT for analysis. Check logs for details." | buildkite-agent annotate --style "error" --context "chatgpt-analysis-${BUILDKITE_JOB_ID}"
+    echo "ChatGPT Analysis failed. No valid response received from OpenAI API. ❌"
+  fi
 
   return 0
 }
