@@ -4,6 +4,7 @@ setup() {
   load "${BATS_PLUGIN_PATH}/load.bash"
 
   export BUILDKITE_PLUGIN_CHATGPT_ANALYZER_API_KEY='test0aou'
+  export BUILDKITE_PLUGIN_CHATGPT_ANALYZER_BUILDKITE_API_TOKEN='test-bk-token'
   export BUILDKITE_ORGANIZATION_SLUG="testorg"
   export BUILDKITE_PIPELINE_SLUG="test-pipeline"
   export BUILDKITE_BUILD_NUMBER="1"
@@ -37,7 +38,8 @@ teardown() {
 
   run "$PWD"/hooks/post-command
 
-  assert_failure
+  assert_success
+  assert_output --partial 'ChatGPT Analyzer Plugin'
   assert_output --partial 'Missing OpenAI API Key' 
 }
 
@@ -46,10 +48,14 @@ teardown() {
 
   assert_success
   assert_output --partial 'ChatGPT Analyzer Plugin'
-  assert_output --partial 'Retrieving OpenAI API Key ...'
+  assert_output --partial 'Loading Plugin with configurations:'
+  assert_output --partial '-----------------------------------'
   assert_output --partial 'Using Model: gpt-5-nano'
   assert_output --partial 'Analysis Level: step' 
-  assert_output --partial 'Done generating summary for this step'
+  assert_output --partial 'Build Comparison: Disabled'
+  assert_output --partial '-----------------------------------'
+  assert_output --partial 'Build Summary generated'
+  assert_output --partial 'ChatGPT Analysis complete'
 }
 
 @test "Specify new values for Optional Configuration" {
@@ -63,17 +69,19 @@ teardown() {
 
   assert_success
   assert_output --partial 'ChatGPT Analyzer Plugin'
-  assert_output --partial 'Retrieving OpenAI API Key ...'
+  assert_output --partial 'Loading Plugin with configurations:'
+  assert_output --partial '-----------------------------------'
   assert_output --partial 'Using Model: gpt-5'
   assert_output --partial 'Analysis Level: build'
   assert_output --partial 'Using Custom Prompt: Custom prompt. This is an additional Custom Prompt '
   assert_output --partial 'Build Comparison: ENABLED. Comparing with last 10 builds.'
-  assert_output --partial 'Done generating summary for this build'
+  assert_output --partial '-----------------------------------'
+  assert_output --partial 'Build Summary generated'
+  assert_output --partial 'ChatGPT Analysis complete'
 }
 
-
 @test "Plugin runs with environment variable data" {
-  export BUILDKITE_PLUGIN_YOUR_CHATGPT_ANALYSER_BUILDKITE_API_TOKEN='test_secret' 
+  unset BUILDKITE_PLUGIN_CHATGPT_ANALYZER_BUILDKITE_API_TOKEN
   export BUILDKITE_SOURCE='ui' 
   export BUILDKITE_COMMAND='echo "Hello, World!"'
   export BUILDKITE_COMMAND_EXIT_STATUS='0'
@@ -82,8 +90,8 @@ teardown() {
 
   assert_success 
   assert_output --partial 'ChatGPT Analyzer Plugin'
-  assert_output --partial 'Done generating summary for this step' 
-  assert_output --partial 'ChatGPT Analysis Result'
+  assert_output --partial 'Build Summary generated'
+  assert_output --partial 'ChatGPT Analysis complete'
 }
 
 @test "Plugin handles invalid API Token" {
@@ -95,10 +103,10 @@ teardown() {
   run "$PWD"/hooks/post-command
 
   assert_success 
-  assert_output --partial 'ChatGPT Analyzer Plugin'
-  assert_output --partial 'Done generating summary for this step' 
-  assert_output --partial 'ChatGPT Analysis Result'
-  assert_output --partial 'No response received from OpenAI API'
+  assert_output --partial 'ChatGPT Analyzer Plugin' 
+  assert_output --partial 'Build Summary generated'
+  assert_output --partial 'No valid response received from OpenAI API'
+  assert_output --partial 'ChatGPT Analysis complete'
 }
 
 
