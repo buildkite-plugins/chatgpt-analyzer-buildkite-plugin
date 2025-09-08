@@ -10,40 +10,45 @@ echo "--- :robot_face: ChatGPT Analyzer Plugin"
 # Validate required tools
 validate_required_tools || exit 1
 
-# Get required plugin configurations
-echo "Retrieving OpenAI API Key ..."
+# Get required plugin configurations 
 # Read plugin configuration for OpenAI API Key
 API_KEY=$(get_openai_api_key)
 if [ -z "${API_KEY}" ]; then
-  log_error 'Missing OpenAI API Key. Please set the API_KEY in your plugin configuration.'
-  exit 1
-fi   
-
-echo "Retrieving other plugin configurations ..."
-# Load Plugin configuration
-BUILDKITE_API_TOKEN=$(get_bk_api_token) 
-MODEL=$(plugin_read_config MODEL "gpt-5-nano")
-ANALYSIS_LEVEL=$(plugin_read_config ANALYSIS_LEVEL "step")
-CUSTOM_PROMPT=$(plugin_read_config CUSTOM_PROMPT "")
-COMPARE_BUILDS=$(plugin_read_config COMPARE_BUILDS "false")
-COMPARISON_RANGE=$(plugin_read_config BUILD_COMPARISON_RANGE "5")
-
-echo "Using Model: ${MODEL}"
-echo "Analysis Level: ${ANALYSIS_LEVEL}"
-if [ -n "${CUSTOM_PROMPT}" ]; then
-  echo "Using Custom Prompt: ${CUSTOM_PROMPT}"
-fi
-
-if [ "${COMPARE_BUILDS}" = "true" ]; then
-  echo "Build Comparison: ENABLED. Comparing with last ${COMPARISON_RANGE} builds."
+  log_warning 'OpenAI API Key not found. Skipping ChatGPT Analysis. ❌'
+  echo -e "ChatGPT Analyzer Plugin: Skipping analysis - OpenAI API Key not found." | buildkite-agent annotate  --style "warning" --context "chatgpt-analysis-${BUILDKITE_JOB_ID}" 
+  exit 0
 else
-  echo "Build Comparison: Disabled."
+  echo "OpenAI API Key found. ✅"
+
+  # Load Plugin configuration
+  BUILDKITE_API_TOKEN=$(get_bk_api_token) 
+  MODEL=$(plugin_read_config MODEL "gpt-5-nano")
+  ANALYSIS_LEVEL=$(plugin_read_config ANALYSIS_LEVEL "step")
+  CUSTOM_PROMPT=$(plugin_read_config CUSTOM_PROMPT "")
+  COMPARE_BUILDS=$(plugin_read_config COMPARE_BUILDS "false")
+  COMPARISON_RANGE=$(plugin_read_config BUILD_COMPARISON_RANGE "5")
+
+  echo "Loading Plugin with configurations:"
+  echo "-----------------------------------"
+  echo "  Using Model: ${MODEL}"
+  echo "  Analysis Level: ${ANALYSIS_LEVEL}"
+  if [ -n "${CUSTOM_PROMPT}" ]; then
+    echo "  Using Custom Prompt: ${CUSTOM_PROMPT}"
+  fi
+
+  if [ "${COMPARE_BUILDS}" = "true" ]; then
+    echo "  Build Comparison: ENABLED. Comparing with last ${COMPARISON_RANGE} builds."
+  else
+    echo "  Build Comparison: Disabled."
+  fi
+  echo "-----------------------------------"
+
+  # Summarize build information 
+  BUILD_SUMMARY=$(get_build_summary "${BUILDKITE_API_TOKEN}" "${ANALYSIS_LEVEL}" "${COMPARE_BUILDS}" "${COMPARISON_RANGE}")
+
+  echo "Build Summary generated. ✅" 
+  send_prompt "${API_KEY}" "${BUILD_SUMMARY}" "${MODEL}" "${CUSTOM_PROMPT}" "${ANALYSIS_LEVEL}"
+
+  echo "ChatGPT Analysis complete. Check the annotations for details. ✅"
+  exit 0
 fi
-
-# Summarize build information 
-BUILD_SUMMARY=$(get_build_summary "${BUILDKITE_API_TOKEN}" "${ANALYSIS_LEVEL}" "${COMPARE_BUILDS}" "${COMPARISON_RANGE}")
-
-log_success "Done generating summary for this ${ANALYSIS_LEVEL}." 
-send_prompt "${API_KEY}" "${BUILD_SUMMARY}" "${MODEL}" "${CUSTOM_PROMPT}" "${ANALYSIS_LEVEL}"
-
-echo "~~~ Done."
