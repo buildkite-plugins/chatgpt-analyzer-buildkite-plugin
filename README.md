@@ -54,7 +54,7 @@ steps:
 
 The environment variable that the OpenAI API key is stored in. Defaults to using `OPENAI_API_KEY`. The recommended approach for storing your API key is to use [Buildkite Secrets](https://buildkite.com/docs/pipelines/security/secrets/buildkite-secrets).
 
-The plugin will fail if no OpenAI key is set. 
+ChatGPT Analyis will be skipped if no `OPENAI_API_KEY` can be resolved from the environment variables. 
 
 #### `buildkite_api_token` (string)
 
