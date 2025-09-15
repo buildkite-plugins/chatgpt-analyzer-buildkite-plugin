@@ -316,9 +316,9 @@ To improve log analysis, ensure that the BUILDKITE_API_TOKEN is set with appropr
 
   local base_prompt
   if [ "${analysis_level}" = "build" ]; then
-    base_prompt="You are an expert software engineer and DevOps specialist. Please analyze this Buildkite build output (containing logs from multiple jobs) and provide insights."
+    base_prompt="Please analyze this Buildkite build output (containing logs from multiple jobs) and provide insights."
   else
-    base_prompt="You are an expert software engineer and DevOps specialist. Please analyze this Buildkite step output and provide insights."
+    base_prompt="Please analyze this Buildkite step output and provide insights."
   fi
 
   # Add build history time analysis if available
@@ -484,10 +484,55 @@ function get_epoch_time() {
     echo "${epoch_time}"
 }
 
-function format_payload() {
-  local model="$1"
-  local custom_prompt="$2"
-  local user_content="$3"
+function extract_api_response() {
+  local response_file="$1"
+  
+  # Check if response file exists and is not empty
+  if [ ! -f "${response_file}" ] || [ ! -s "${response_file}" ]; then
+    echo "Error: API Response file not found or empty."
+    return 1
+  fi
+  
+  # Read response content from file
+  local response
+  response=$(cat "${response_file}")
+  
+  # Check if the response contains an error
+  if echo "${response}" | jq -e '.error' > /dev/null 2>&1; then
+    echo "$(echo "${response}" | jq -r '.error.message')"
+    return 1
+  fi
+  
+  # Check if the response contains choices
+  if ! echo "${response}" | jq -e '.choices' > /dev/null 2>&1; then
+    echo "No choices found in the response from OpenAI API."
+    return 1
+  fi
+  
+  # Check if the response contains a message
+  if ! echo "${response}" | jq -e '.choices[0].message.content' > /dev/null 2>&1; then
+    echo "No message content found in the response from OpenAI API."
+    return 1
+  fi
+  
+  # Check if content is not null or empty
+  local content
+  content=$(echo "${response}" | jq -r '.choices[0].message.content')
+  if [ -z "$content" ] || [ "$content" = "null" ]; then
+    echo "The API's message content is empty or null."
+    return 1
+  fi
+  
+  # Output the extracted content
+  echo "$content"
+  return 0
+}
+
+function call_openai_api() {
+  local api_secret_key="$1"
+  local model="$2"
+  local custom_prompt="$3"
+  local user_content="$4"
   local base_prompt="You are an expert software engineer and DevOps specialist specialising in Buildkite. Please provide a detailed analysis of the build information provided."
 
   local payload
@@ -496,97 +541,109 @@ function format_payload() {
       base_prompt="${base_prompt} ${custom_prompt}"
   fi 
 
-  # Prepare the payload with prompt
-  payload=$(jq -n \
+  local user_content_file="/tmp/chatgpt_analyzer_content_${BUILDKITE_BUILD_ID}.txt"
+  local payload_file="/tmp/chatgpt_analyzer_payload_${BUILDKITE_BUILD_ID}.json"
+
+  # Write user content to temporary file
+  printf '%s' "$user_content" > "$user_content_file"
+
+  # Prepare the payload using file input for user_content and arg for system_prompt
+  jq -n \
     --arg model "$model" \
     --arg system_prompt "$base_prompt" \
-    --arg user_content "$user_content" \
+    --rawfile user_content "$user_content_file" \
      '{
-      model: $model,
-      messages: [
-        { role: "system", content: $system_prompt },
-        { role: "user", content: $user_content }
-      ]
-    }') 
+        model: $model,
+        messages: [
+          { role: "system", content: $system_prompt },
+          { role: "user", content: $user_content }
+        ]
+      }' > "$payload_file"
 
-  echo "$payload"
-}
+  # Clean up temporary files
+  rm -f "$user_content_file"
 
-function valid_api_response() {
-  local response="$1"
-  
-  # Check if response is empty
-  if [ -z "${response}" ]; then
-    log_warning "No response received from OpenAI API."
-    return 1
-  fi
-  
-  # Check if the response contains an error
-  if echo "${response}" | jq -e '.error' > /dev/null; then
-    log_warning "$(echo "${response}" | jq -r '.error.message')"
-    return 1
-  fi
-  
-  # Check if the response contains choices
-  if ! echo "${response}" | jq -e '.choices' > /dev/null; then
-    log_warning "No choices found in the response from OpenAI API."
-    return 1
-  fi
-  
-  # Check if the response contains a message
-  if ! echo "${response}" | jq -e '.choices[0].message.content' > /dev/null; then
-    log_warning "No message content found in the response from OpenAI API."
-    return 1
-  fi
-  
-  return 0
-}
+  # create a debug file to log curl request and response details
+  local debug_file="/tmp/chatgpt_analyzer_debug_${BUILDKITE_BUILD_ID}.log"
 
-function call_openapi_chatgpt() {
-  local api_secret_key="$1"
-  local payload="$2"
+  # Initialize debug file
+  echo "OpenAI API Debug Log" > "${debug_file}"
+  echo "Timestamp: $(date)" >> "${debug_file}"
+  echo "Model: ${model}" >> "${debug_file}"
+  echo "Payload file: ${payload_file}" >> "${debug_file}"  
+  echo "Response file: ${response_file}" >> "${debug_file}" 
 
-  # Call the OpenAI API
-  response=$(curl -sS -X POST "https://api.openai.com/v1/chat/completions" \
-    -H "Authorization: Bearer ${api_secret_key}" \
+  # check if response file already exists locally and is not empty, return it directly
+  if [ -f "$response_file" ] && [ -s "$response_file" ]; then
+    echo "${response_file}"  
+    return 0
+  fi
+ 
+  # Call the OpenAI API and store response in a file
+  local response_file="/tmp/chatgpt_analyzer_response_${BUILDKITE_BUILD_ID}.json"  
+  local http_code 
+  http_code=$(curl -sS -o "$response_file" -w "%{http_code}" \
+    -X POST "https://api.openai.com/v1/chat/completions" \
+    -H "Authorization: Bearer ${OPENAI_API_KEY}" \
     -H "Content-Type: application/json" \
-    -d "${payload}")
+    -d "@${payload_file}" \
+    -o "${response_file}" 2>> "${debug_file}")
+
+  if [ "$http_code" -ne 200 ]; then
+    echo "OpenAI API call failed with HTTP code: $http_code" >&2 
+    # extract error message from response if available
+    if [ -s "$response_file" ]; then
+      local error_message
+      error_message=$(jq -r '.error.message // empty' "$response_file" 2>/dev/null)
+      if [ -n "$error_message" ]; then
+        echo "Error message from OpenAI API: $error_message" >&2
+        echo "Response content: $(cat "${response_file}")" >> "${debug_file}"
+      fi
+    fi
+    return 1
+  fi
   
-  echo "${response}"
+  #clean up payload file
+  rm -f "$payload_file"
+  # Return the response file path
+  if [ ! -s "$response_file" ]; then
+    echo "Error: OpenAI API response is empty." >&2
+    echo "Errror: Unable to retrieve valid response from OpenAI API." >> "${debug_file}"
+    return 1
+  fi
+  echo "${response_file}"  
+
 }
 
 function send_prompt() {
   local api_secret_key="$1"
   local base_prompt="$2"
   local model="$3"
-  local user_prompt="$4" 
+  local custom_prompt="$4"  
   local analysis_level="$5"
 
-  local content=${base_prompt}
-  if [ -z "${content}" ]; then
+  if [ -z "${base_prompt}" ]; then
     log_error "Failed to generate build or step level information for analysis."
     return 1
   fi
 
-  local prompt_payload
-  prompt_payload=$(format_payload "${model}" "${user_prompt}" "${content}") 
-
   # Call the OpenAI API
-  local response
-  response=$(call_openapi_chatgpt "${api_secret_key}"  "${prompt_payload}")
-  
-  log_section "ChatGPT Analysis Result"
-  # Validate and process the response
-  if valid_api_response "${response}"; then
-   
+  local response_file
+  response_file=$(call_openai_api "${api_secret_key}"  "${model}" "${custom_prompt}" "${base_prompt}")
+
+  log_section "ChatGPT Analysis Result" 
+  local api_content
+  if api_content=$(extract_api_response "${response_file}"); then
+ 
     # Extract and display the response content
-    total_tokens=$(echo "${response}" | jq -r '.usage.total_tokens')
+    local response_content
+    response_content=$(cat "${response_file}")
+    total_tokens=$(echo "${response_content}" | jq -r '.usage.total_tokens')
     echo "Summary:"
     echo "  Total tokens used: ${total_tokens}"
 
-  
-    content_response=$(echo "${response}" | jq -r '.choices[0].message.content' | sed 's/^/  /')  
-    if [ -n "${content_response}" ]; then 
+    content_response=$(echo "${api_content}" | sed 's/^/  /')
+    if [ -n "${content_response}" ]; then
       annotation_file="/tmp/chatgpt_analysis.md"
       annotation_title="ChatGPT Step Level Analysis"
       if [ "${analysis_level}" == "build" ]; then
@@ -597,7 +654,7 @@ function send_prompt() {
       {
         echo "### ${annotation_title}"
         echo "---"
-        printf "%s\n" "${content_response}"
+        echo "${content_response}"
         echo "---"
       } > "${annotation_file}"
 
@@ -608,8 +665,7 @@ function send_prompt() {
         else
           buildkite-agent annotate --style "info" --context "chatgpt-analysis-${BUILDKITE_JOB_ID}"  < "${annotation_file}"
         fi
-        echo "Annotation created successfully. ✅"
-        echo "ChatGPT Analysis complete. ✅"
+        echo "Annotation created successfully. ✅" 
         rm -f "${annotation_file}"
       else
         echo -e "ChatGPT analysis in Job ${BUILDKITE_JOB_ID} (${BUILDKITE_LABEL}) failed to generate an annotation file." | buildkite-agent annotate --style "error" --context "chatgpt-analysis-${BUILDKITE_JOB_ID}"
@@ -624,5 +680,8 @@ function send_prompt() {
     echo "ChatGPT Analysis failed. No valid response received from OpenAI API. ❌"
   fi
 
+  # Clean up response file
+  rm -f "${response_file}"
+  
   return 0
 }
