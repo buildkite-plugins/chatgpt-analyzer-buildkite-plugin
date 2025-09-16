@@ -499,7 +499,7 @@ function extract_api_response() {
   
   # Check if the response contains an error
   if echo "${response}" | jq -e '.error' > /dev/null 2>&1; then
-    echo "$(echo "${response}" | jq -r '.error.message')"
+    echo "Error: $(echo "${response}" | jq -r '.error.message')"
     return 1
   fi
   
@@ -535,7 +535,6 @@ function call_openai_api() {
   local user_content="$4"
   local base_prompt="You are an expert software engineer and DevOps specialist specialising in Buildkite. Please provide a detailed analysis of the build information provided."
 
-  local payload
   # check if user prompt is not empty, append to default prompt "you are an expert."  
   if [ -n "${custom_prompt}" ]; then
       base_prompt="${base_prompt} ${custom_prompt}"
@@ -567,11 +566,13 @@ function call_openai_api() {
   local debug_file="/tmp/chatgpt_analyzer_debug_${BUILDKITE_BUILD_ID}.log"
 
   # Initialize debug file
-  echo "OpenAI API Debug Log" > "${debug_file}"
-  echo "Timestamp: $(date)" >> "${debug_file}"
-  echo "Model: ${model}" >> "${debug_file}"
-  echo "Payload file: ${payload_file}" >> "${debug_file}"  
-  echo "Response file: ${response_file}" >> "${debug_file}" 
+  {
+    echo "OpenAI API Debug Log"
+    echo "Timestamp: $(date)"
+    echo "Model: ${model}"
+    echo "Payload file: ${payload_file}"
+    echo "Response file: ${response_file}"
+  } > "${debug_file}" 
 
   # check if response file already exists locally and is not empty, return it directly
   if [ -f "$response_file" ] && [ -s "$response_file" ]; then
@@ -615,7 +616,7 @@ function call_openai_api() {
 
 }
 
-function send_prompt() {
+function analyse_build() {
   local api_secret_key="$1"
   local base_prompt="$2"
   local model="$3"
@@ -642,7 +643,8 @@ function send_prompt() {
     echo "Summary:"
     echo "  Total tokens used: ${total_tokens}"
 
-    content_response=$(echo "${api_content}" | sed 's/^/  /')
+    content_response="${api_content//$'\n'/$'\n'  }"
+    content_response="  ${content_response}"
     if [ -n "${content_response}" ]; then
       annotation_file="/tmp/chatgpt_analysis.md"
       annotation_title="ChatGPT Step Level Analysis"
