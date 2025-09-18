@@ -564,6 +564,7 @@ function call_openai_api() {
 
   # create a debug file to log curl request and response details
   local debug_file="/tmp/chatgpt_analyzer_debug_${BUILDKITE_BUILD_ID}.log"
+  local response_file="/tmp/chatgpt_analyzer_response_${BUILDKITE_BUILD_ID}.json" 
 
   # Initialize debug file
   {
@@ -580,34 +581,34 @@ function call_openai_api() {
     return 0
   fi
  
-  # Call the OpenAI API and store response in a file
-  local response_file="/tmp/chatgpt_analyzer_response_${BUILDKITE_BUILD_ID}.json"  
+  # Call the OpenAI API and store response to file 
   local http_code 
   http_code=$(curl -sS -o "$response_file" -w "%{http_code}" \
     -X POST "https://api.openai.com/v1/chat/completions" \
-    -H "Authorization: Bearer ${OPENAI_API_KEY}" \
+    -H "Authorization: Bearer ${api_secret_key}" \
     -H "Content-Type: application/json" \
     -d "@${payload_file}" \
     -o "${response_file}" 2>> "${debug_file}")
 
-  if [ "$http_code" -ne 200 ]; then
-    echo "OpenAI API call failed with HTTP code: $http_code" >&2 
+  if [ -n "${http_code}" ] && [ "${http_code}" -ne 200 ]; then
+    echo "OpenAI API call failed with HTTP code: ${http_code}" >&2 
     # extract error message from response if available
-    if [ -s "$response_file" ]; then
+    if [ -s "${response_file}" ]; then
       local error_message
-      error_message=$(jq -r '.error.message // empty' "$response_file" 2>/dev/null)
-      if [ -n "$error_message" ]; then
-        echo "Error message from OpenAI API: $error_message" >&2
+      error_message=$(jq -r '.error.message // empty' "${response_file}" 2>/dev/null)
+      if [ -n "${error_message}" ]; then
+        echo "Error message from OpenAI API: ${error_message}" >&2
         echo "Response content: $(cat "${response_file}")" >> "${debug_file}"
       fi
     fi
     return 1
   fi
+
   
   #clean up payload file
-  rm -f "$payload_file"
+  rm -f "${payload_file}"
   # Return the response file path
-  if [ ! -s "$response_file" ]; then
+  if [ ! -s "${response_file}" ]; then
     echo "Error: OpenAI API response is empty." >&2
     echo "Errror: Unable to retrieve valid response from OpenAI API." >> "${debug_file}"
     return 1
