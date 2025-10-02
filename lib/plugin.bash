@@ -282,24 +282,25 @@ Exit Status: ${exit_status}" >> "${log_file}"
     return 1
   fi
 
-  # Construct prompt
-  local base_prompt
+  # Construct build summary
+  local build_summary
+  build_summary="The following is the summary of the Buildkite  ${analysis_level}. Analysis is requested according to the system instructions provided.
+  
+  Build Information:
+${build_info}"
 
   # check if logs are empty
   if [ -z "${logs}" ]; then
     # Default analysis using environment variables
-    base_prompt="Analysis Level: ${analysis_level}
+    build_summary="${build_summary} 
 
-Build Information:
-${build_info}
-
-Note: Detailed logs could not be retrieved. This may be due to:
+Warning: Detailed logs could not be retrieved. This may be due to:
 - Missing BUILDKITE_API_TOKEN environment variable
 - Insufficient permissions to access logs
 
 To improve log analysis, ensure that the BUILDKITE_API_TOKEN is set with appropriate permissions.
 "
-    echo "${base_prompt}"
+    echo "${build_summary}"
     return
   fi
 
@@ -312,58 +313,26 @@ To improve log analysis, ensure that the BUILDKITE_API_TOKEN is set with appropr
       build_history_analysis="$(< "${build_analysis_file}")"
     fi
     rm -f "${build_analysis_file}"
-  fi
-
-  local base_prompt
-  if [ "${analysis_level}" = "build" ]; then
-    base_prompt="Please analyze this Buildkite build output (containing logs from multiple jobs) and provide insights."
-  else
-    base_prompt="Please analyze this Buildkite step output and provide insights."
-  fi
+  fi 
 
   # Add build history time analysis if available
   if [ -n "${build_history_analysis}" ]; then
-    base_prompt="${base_prompt}
+    build_summary="${build_summary}
 
 ${build_history_analysis}"
   fi  
 
-  if [ "${analysis_level}" = "build" ]; then
-    base_prompt="${base_prompt}    
-Build Information:
-${build_info}
-
+  # append the job logs to the summary
+  build_summary="${build_summary}
+  
 Build Logs (from multiple jobs):
 \`\`\`
 ${logs}
-\`\`\`
-
-Please provide:
-1. **Analysis**: What happened in this build? $([ "${BUILDKITE_COMMAND_EXIT_STATUS:-0}" -ne 0 ] && echo "Why did any jobs fail?" || echo "Any notable issues or warnings across jobs?")
-2. **Key Points**: Important information across all jobs and their significance
-3. **Trends**: Any patterns or trends observed in the logs (e.g., recurring errors, performance issues, etc.)
-
-Focus on being practical and actionable. "
-
-  else
-    base_prompt="${base_prompt}    
-
-Step Information:
-${build_info}
-
-Build Logs:
-\`\`\`
-${logs}
-\`\`\`
-
-Please provide:
-1. **Analysis**: What happened in this job? $([ "${BUILDKITE_COMMAND_EXIT_STATUS:-0}" -ne 0 ] && echo "Why did this job fail?" || echo "Any notable issues or warnings in this job?")
-"  
-  fi
+\`\`\`"  
 
   # Clean up
   rm -f "${log_file}"
-  echo "${base_prompt}"
+  echo "${build_summary}"
 }
  
 function create_buildlevel_comparison() {
@@ -531,15 +500,9 @@ function extract_api_response() {
 function call_openai_api() {
   local api_secret_key="$1"
   local model="$2"
-  local custom_prompt="$3"
-  local user_content="$4"
-  local base_prompt="You are an expert software engineer and DevOps specialist specialising in Buildkite. Please provide a detailed analysis of the build information provided."
-
-  # check if user prompt is not empty, append to default prompt "you are an expert."  
-  if [ -n "${custom_prompt}" ]; then
-      base_prompt="${base_prompt} ${custom_prompt}"
-  fi 
-
+  local system_prompt="$3"
+  local user_content="$4" 
+   
   local user_content_file="/tmp/chatgpt_analyzer_content_${BUILDKITE_BUILD_ID}.txt"
   local payload_file="/tmp/chatgpt_analyzer_payload_${BUILDKITE_BUILD_ID}.json"
 
@@ -549,7 +512,7 @@ function call_openai_api() {
   # Prepare the payload using file input for user_content and arg for system_prompt
   jq -n \
     --arg model "$model" \
-    --arg system_prompt "$base_prompt" \
+    --arg system_prompt "$system_prompt" \
     --rawfile user_content "$user_content_file" \
      '{
         model: $model,
@@ -619,19 +582,25 @@ function call_openai_api() {
 
 function analyse_build() {
   local api_secret_key="$1"
-  local base_prompt="$2"
+  local build_summary="$2"
   local model="$3"
   local custom_prompt="$4"  
   local analysis_level="$5"
+  local compare_builds="${6:-false}"
 
-  if [ -z "${base_prompt}" ]; then
+
+  if [ -z "${build_summary}" ]; then
     log_error "Failed to generate build or step level information for analysis."
     return 1
   fi
 
+  #setup the system prompt
+  local system_prompt
+  system_prompt=$(build_system_prompt "${analysis_level}" "${custom_prompt}" "${compare_builds}")
+
   # Call the OpenAI API
   local response_file
-  response_file=$(call_openai_api "${api_secret_key}"  "${model}" "${custom_prompt}" "${base_prompt}")
+  response_file=$(call_openai_api "${api_secret_key}"  "${model}" "${system_prompt}" "${build_summary}")
 
   log_section "ChatGPT Analysis Result" 
   local api_content
@@ -648,9 +617,9 @@ function analyse_build() {
     content_response="  ${content_response}"
     if [ -n "${content_response}" ]; then
       annotation_file="/tmp/chatgpt_analysis.md"
-      annotation_title="ChatGPT Step Level Analysis"
+      annotation_title="Step Level Analysis"
       if [ "${analysis_level}" == "build" ]; then
-        annotation_title="ChatGPT Build Level Analysis"
+        annotation_title="Build Level Analysis"
       fi
 
       # create annotation file
@@ -687,4 +656,40 @@ function analyse_build() {
   rm -f "${response_file}"
   
   return 0
+}
+
+function build_system_prompt() {
+  local analysis_level="$1"
+  local custom_prompt="$2"
+  local compare_builds="${3:-false}"
+
+  local system_prompt
+  system_prompt="You are an expert software engineer and DevOps specialist specialising in Buildkite."
+   
+  if [ -n "${custom_prompt}" ]; then
+      system_prompt="${system_prompt} ${custom_prompt}"
+  else 
+      system_prompt="${system_prompt} Please provide a detailed analysis of the ${analysis_level} information provided." 
+      if [ "${analysis_level}" = "build" ]; then
+        system_prompt="${system_prompt} Focus on the following aspects:
+1. **Analysis**: What happened in this build? Any notable issues or warnings across jobs?
+2. **Key Points**: Important information across all jobs and their significance."
+        if [ "${compare_builds}" = "true" ]; then
+          system_prompt="${system_prompt} 
+3. **Build Time Comparison**: Analyze the build time trends compared to recent builds. Identify patterns or anomalies in build duration."
+        fi
+      else
+        system_prompt="${system_prompt} Focus on the following aspects:
+1. **Analysis**: What happened in this job? $([ "${BUILDKITE_COMMAND_EXIT_STATUS:-0}" -ne 0 ] && echo "Why did this job fail?" || echo "Any notable issues or warnings in this job?")
+2. **Key Points**: Important information in this job."
+      fi
+
+
+  fi
+
+  echo "${system_prompt}
+  
+If no errors are found, just confirm the build succeeded.
+Do not include speculative or unrelated information."
+
 }

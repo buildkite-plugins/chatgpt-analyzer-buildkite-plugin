@@ -47,7 +47,7 @@ else
   BUILD_SUMMARY=$(get_build_summary "${BUILDKITE_API_TOKEN}" "${ANALYSIS_LEVEL}" "${COMPARE_BUILDS}" "${COMPARISON_RANGE}")
 
   echo "Build Summary generated. ✅" 
-  analyse_build "${API_KEY}" "${BUILD_SUMMARY}" "${MODEL}" "${CUSTOM_PROMPT}" "${ANALYSIS_LEVEL}"
+  analyse_build "${API_KEY}" "${BUILD_SUMMARY}" "${MODEL}" "${CUSTOM_PROMPT}" "${ANALYSIS_LEVEL}" "${COMPARE_BUILDS}"
 
   echo "ChatGPT Analysis complete. Check the annotations for details. ✅"
   exit 0
