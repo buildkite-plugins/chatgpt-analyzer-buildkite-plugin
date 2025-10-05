@@ -685,13 +685,11 @@ function build_system_prompt() {
         if [ "${compare_builds}" = "true" ]; then
           system_prompt="${system_prompt} 
 3. **Job's Run Time Comparison**: Analyze the job's run time trends compared to recent builds. Identify patterns or anomalies in job duration."
+        fi
       fi
-
-
   fi
-
   echo "${system_prompt}
-  
+
 If no errors are found, just confirm the build succeeded.
 Do not include speculative or unrelated information."
 
