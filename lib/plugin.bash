@@ -667,7 +667,7 @@ function build_system_prompt() {
   system_prompt="You are an expert software engineer and DevOps specialist specialising in Buildkite."
    
   if [ -n "${custom_prompt}" ]; then
-      system_prompt="${system_prompt} ${custom_prompt}"
+      system_prompt="${custom_prompt}"
   else 
       system_prompt="${system_prompt} Please provide a detailed analysis of the ${analysis_level} information provided." 
       if [ "${analysis_level}" = "build" ]; then
