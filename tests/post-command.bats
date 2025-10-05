@@ -8,11 +8,15 @@ setup() {
   export BUILDKITE_ORGANIZATION_SLUG="testorg"
   export BUILDKITE_PIPELINE_SLUG="test-pipeline"
   export BUILDKITE_BUILD_NUMBER="1"
-  export BUILDKITE_BUILD_ID="123-build-id"
+  export BUILDKITE_BUILD_ID="123-test-build-id"
   export BUILDKITE_JOB_ID="456-job-id"
   export BUILDKITE_SOURCE="ui"
   export BUILDKITE_PULL_REQUEST="false"
   export BUILDKITE_LABEL="Test Job 456"
+
+  # create a mock response file for curl to use
+  mkdir -p /tmp
+  printf '{"choices":[{"message":{"role": "assistant", "content": "Here is a practical Analysis for this Build \nMock Analysis Result"}}]}' > "/tmp/chatgpt_analyzer_response_${BUILDKITE_BUILD_ID}.json"
 
   # Mock tools with simpler stubs
   stub curl \
@@ -25,6 +29,8 @@ setup() {
 }
 
 teardown() {
+  # Remove the mock response file
+  rm -f "/tmp/chatgpt_analyzer_response_${BUILDKITE_BUILD_ID:-123-test-build-id}.json"
 
   # Only unstub if they were actually stubbed
   unstub curl || true
@@ -48,6 +54,7 @@ teardown() {
 
   assert_success
   assert_output --partial 'ChatGPT Analyzer Plugin'
+  assert_output --partial 'OpenAI API Key found'
   assert_output --partial 'Loading Plugin with configurations:'
   assert_output --partial '-----------------------------------'
   assert_output --partial 'Using Model: gpt-5-nano'

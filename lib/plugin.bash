@@ -282,24 +282,25 @@ Exit Status: ${exit_status}" >> "${log_file}"
     return 1
   fi
 
-  # Construct prompt
-  local base_prompt
+  # Construct build summary
+  local build_summary
+  build_summary="The following is the summary of the Buildkite  ${analysis_level}. Analysis is requested according to the system instructions provided.
+  
+  Build Information:
+${build_info}"
 
   # check if logs are empty
   if [ -z "${logs}" ]; then
     # Default analysis using environment variables
-    base_prompt="Analysis Level: ${analysis_level}
+    build_summary="${build_summary} 
 
-Build Information:
-${build_info}
-
-Note: Detailed logs could not be retrieved. This may be due to:
+Warning: Detailed logs could not be retrieved. This may be due to:
 - Missing BUILDKITE_API_TOKEN environment variable
 - Insufficient permissions to access logs
 
 To improve log analysis, ensure that the BUILDKITE_API_TOKEN is set with appropriate permissions.
 "
-    echo "${base_prompt}"
+    echo "${build_summary}"
     return
   fi
 
@@ -312,58 +313,26 @@ To improve log analysis, ensure that the BUILDKITE_API_TOKEN is set with appropr
       build_history_analysis="$(< "${build_analysis_file}")"
     fi
     rm -f "${build_analysis_file}"
-  fi
-
-  local base_prompt
-  if [ "${analysis_level}" = "build" ]; then
-    base_prompt="You are an expert software engineer and DevOps specialist. Please analyze this Buildkite build output (containing logs from multiple jobs) and provide insights."
-  else
-    base_prompt="You are an expert software engineer and DevOps specialist. Please analyze this Buildkite step output and provide insights."
-  fi
+  fi 
 
   # Add build history time analysis if available
   if [ -n "${build_history_analysis}" ]; then
-    base_prompt="${base_prompt}
+    build_summary="${build_summary}
 
 ${build_history_analysis}"
   fi  
 
-  if [ "${analysis_level}" = "build" ]; then
-    base_prompt="${base_prompt}    
-Build Information:
-${build_info}
-
+  # append the job logs to the summary
+  build_summary="${build_summary}
+  
 Build Logs (from multiple jobs):
 \`\`\`
 ${logs}
-\`\`\`
-
-Please provide:
-1. **Analysis**: What happened in this build? $([ "${BUILDKITE_COMMAND_EXIT_STATUS:-0}" -ne 0 ] && echo "Why did any jobs fail?" || echo "Any notable issues or warnings across jobs?")
-2. **Key Points**: Important information across all jobs and their significance
-3. **Trends**: Any patterns or trends observed in the logs (e.g., recurring errors, performance issues, etc.)
-
-Focus on being practical and actionable. "
-
-  else
-    base_prompt="${base_prompt}    
-
-Step Information:
-${build_info}
-
-Build Logs:
-\`\`\`
-${logs}
-\`\`\`
-
-Please provide:
-1. **Analysis**: What happened in this job? $([ "${BUILDKITE_COMMAND_EXIT_STATUS:-0}" -ne 0 ] && echo "Why did this job fail?" || echo "Any notable issues or warnings in this job?")
-"  
-  fi
+\`\`\`"  
 
   # Clean up
   rm -f "${log_file}"
-  echo "${base_prompt}"
+  echo "${build_summary}"
 }
  
 function create_buildlevel_comparison() {
@@ -484,120 +453,180 @@ function get_epoch_time() {
     echo "${epoch_time}"
 }
 
-function format_payload() {
-  local model="$1"
-  local custom_prompt="$2"
-  local user_content="$3"
-  local base_prompt="You are an expert software engineer and DevOps specialist specialising in Buildkite. Please provide a detailed analysis of the build information provided."
-
-  local payload
-  # check if user prompt is not empty, append to default prompt "you are an expert."  
-  if [ -n "${custom_prompt}" ]; then
-      base_prompt="${base_prompt} ${custom_prompt}"
-  fi 
-
-  # Prepare the payload with prompt
-  payload=$(jq -n \
-    --arg model "$model" \
-    --arg system_prompt "$base_prompt" \
-    --arg user_content "$user_content" \
-     '{
-      model: $model,
-      messages: [
-        { role: "system", content: $system_prompt },
-        { role: "user", content: $user_content }
-      ]
-    }') 
-
-  echo "$payload"
-}
-
-function valid_api_response() {
-  local response="$1"
+function extract_api_response() {
+  local response_file="$1"
   
-  # Check if response is empty
-  if [ -z "${response}" ]; then
-    log_warning "No response received from OpenAI API."
+  # Check if response file exists and is not empty
+  if [ ! -f "${response_file}" ] || [ ! -s "${response_file}" ]; then
+    echo "Error: API Response file not found or empty."
     return 1
   fi
   
+  # Read response content from file
+  local response
+  response=$(cat "${response_file}")
+  
   # Check if the response contains an error
-  if echo "${response}" | jq -e '.error' > /dev/null; then
-    log_warning "$(echo "${response}" | jq -r '.error.message')"
+  if echo "${response}" | jq -e '.error' > /dev/null 2>&1; then
+    echo "Error: $(echo "${response}" | jq -r '.error.message')"
     return 1
   fi
   
   # Check if the response contains choices
-  if ! echo "${response}" | jq -e '.choices' > /dev/null; then
-    log_warning "No choices found in the response from OpenAI API."
+  if ! echo "${response}" | jq -e '.choices' > /dev/null 2>&1; then
+    echo "No choices found in the response from OpenAI API."
     return 1
   fi
   
   # Check if the response contains a message
-  if ! echo "${response}" | jq -e '.choices[0].message.content' > /dev/null; then
-    log_warning "No message content found in the response from OpenAI API."
+  if ! echo "${response}" | jq -e '.choices[0].message.content' > /dev/null 2>&1; then
+    echo "No message content found in the response from OpenAI API."
     return 1
   fi
   
+  # Check if content is not null or empty
+  local content
+  content=$(echo "${response}" | jq -r '.choices[0].message.content')
+  if [ -z "$content" ] || [ "$content" = "null" ]; then
+    echo "The API's message content is empty or null."
+    return 1
+  fi
+  
+  # Output the extracted content
+  echo "$content"
   return 0
 }
 
-function call_openapi_chatgpt() {
+function call_openai_api() {
   local api_secret_key="$1"
-  local payload="$2"
+  local model="$2"
+  local system_prompt="$3"
+  local user_content="$4" 
+   
+  local user_content_file="/tmp/chatgpt_analyzer_content_${BUILDKITE_BUILD_ID}.txt"
+  local payload_file="/tmp/chatgpt_analyzer_payload_${BUILDKITE_BUILD_ID}.json"
 
-  # Call the OpenAI API
-  response=$(curl -sS -X POST "https://api.openai.com/v1/chat/completions" \
+  # Write user content to temporary file
+  printf '%s' "$user_content" > "$user_content_file"
+
+  # Prepare the payload using file input for user_content and arg for system_prompt
+  jq -n \
+    --arg model "$model" \
+    --arg system_prompt "$system_prompt" \
+    --rawfile user_content "$user_content_file" \
+     '{
+        model: $model,
+        messages: [
+          { role: "system", content: $system_prompt },
+          { role: "user", content: $user_content }
+        ]
+      }' > "$payload_file"
+
+  # Clean up temporary files
+  rm -f "$user_content_file"
+
+  # create a debug file to log curl request and response details
+  local debug_file="/tmp/chatgpt_analyzer_debug_${BUILDKITE_BUILD_ID}.log"
+  local response_file="/tmp/chatgpt_analyzer_response_${BUILDKITE_BUILD_ID}.json" 
+
+  # Initialize debug file
+  {
+    echo "OpenAI API Debug Log"
+    echo "Timestamp: $(date)"
+    echo "Model: ${model}"
+    echo "Payload file: ${payload_file}"
+    echo "Response file: ${response_file}"
+  } > "${debug_file}" 
+
+  # check if response file already exists locally and is not empty, return it directly
+  if [ -f "$response_file" ] && [ -s "$response_file" ]; then
+    echo "${response_file}"  
+    return 0
+  fi
+ 
+  # Call the OpenAI API and store response to file 
+  local http_code 
+  http_code=$(curl -sS -o "$response_file" -w "%{http_code}" \
+    -X POST "https://api.openai.com/v1/chat/completions" \
     -H "Authorization: Bearer ${api_secret_key}" \
     -H "Content-Type: application/json" \
-    -d "${payload}")
+    -d "@${payload_file}" \
+    -o "${response_file}" 2>> "${debug_file}")
+
+  if [ -n "${http_code}" ] && [ "${http_code}" -ne 200 ]; then
+    echo "OpenAI API call failed with HTTP code: ${http_code}" >&2 
+    # extract error message from response if available
+    if [ -s "${response_file}" ]; then
+      local error_message
+      error_message=$(jq -r '.error.message // empty' "${response_file}" 2>/dev/null)
+      if [ -n "${error_message}" ]; then
+        echo "Error message from OpenAI API: ${error_message}" >&2
+        echo "Response content: $(cat "${response_file}")" >> "${debug_file}"
+      fi
+    fi
+    return 1
+  fi
+
   
-  echo "${response}"
+  #clean up payload file
+  rm -f "${payload_file}"
+  # Return the response file path
+  if [ ! -s "${response_file}" ]; then
+    echo "Error: OpenAI API response is empty." >&2
+    echo "Errror: Unable to retrieve valid response from OpenAI API." >> "${debug_file}"
+    return 1
+  fi
+  echo "${response_file}"  
+
 }
 
-function send_prompt() {
+function analyse_build() {
   local api_secret_key="$1"
-  local base_prompt="$2"
+  local build_summary="$2"
   local model="$3"
-  local user_prompt="$4" 
+  local custom_prompt="$4"  
   local analysis_level="$5"
+  local compare_builds="${6:-false}"
 
-  local content=${base_prompt}
-  if [ -z "${content}" ]; then
+
+  if [ -z "${build_summary}" ]; then
     log_error "Failed to generate build or step level information for analysis."
     return 1
   fi
 
-  local prompt_payload
-  prompt_payload=$(format_payload "${model}" "${user_prompt}" "${content}") 
+  #setup the system prompt
+  local system_prompt
+  system_prompt=$(build_system_prompt "${analysis_level}" "${custom_prompt}" "${compare_builds}")
 
   # Call the OpenAI API
-  local response
-  response=$(call_openapi_chatgpt "${api_secret_key}"  "${prompt_payload}")
-  
-  log_section "ChatGPT Analysis Result"
-  # Validate and process the response
-  if valid_api_response "${response}"; then
-   
+  local response_file
+  response_file=$(call_openai_api "${api_secret_key}"  "${model}" "${system_prompt}" "${build_summary}")
+
+  log_section "ChatGPT Analysis Result" 
+  local api_content
+  if api_content=$(extract_api_response "${response_file}"); then
+ 
     # Extract and display the response content
-    total_tokens=$(echo "${response}" | jq -r '.usage.total_tokens')
+    local response_content
+    response_content=$(cat "${response_file}")
+    total_tokens=$(echo "${response_content}" | jq -r '.usage.total_tokens')
     echo "Summary:"
     echo "  Total tokens used: ${total_tokens}"
 
-  
-    content_response=$(echo "${response}" | jq -r '.choices[0].message.content' | sed 's/^/  /')  
-    if [ -n "${content_response}" ]; then 
+    content_response="${api_content//$'\n'/$'\n'  }"
+    content_response="  ${content_response}"
+    if [ -n "${content_response}" ]; then
       annotation_file="/tmp/chatgpt_analysis.md"
-      annotation_title="ChatGPT Step Level Analysis"
+      annotation_title="Step Level Analysis"
       if [ "${analysis_level}" == "build" ]; then
-        annotation_title="ChatGPT Build Level Analysis"
+        annotation_title="Build Level Analysis"
       fi
 
       # create annotation file
       {
         echo "### ${annotation_title}"
         echo "---"
-        printf "%s\n" "${content_response}"
+        echo "${content_response}"
         echo "---"
       } > "${annotation_file}"
 
@@ -608,8 +637,7 @@ function send_prompt() {
         else
           buildkite-agent annotate --style "info" --context "chatgpt-analysis-${BUILDKITE_JOB_ID}"  < "${annotation_file}"
         fi
-        echo "Annotation created successfully. ✅"
-        echo "ChatGPT Analysis complete. ✅"
+        echo "Annotation created successfully. ✅" 
         rm -f "${annotation_file}"
       else
         echo -e "ChatGPT analysis in Job ${BUILDKITE_JOB_ID} (${BUILDKITE_LABEL}) failed to generate an annotation file." | buildkite-agent annotate --style "error" --context "chatgpt-analysis-${BUILDKITE_JOB_ID}"
@@ -624,5 +652,45 @@ function send_prompt() {
     echo "ChatGPT Analysis failed. No valid response received from OpenAI API. ❌"
   fi
 
+  # Clean up response file
+  rm -f "${response_file}"
+  
   return 0
+}
+
+function build_system_prompt() {
+  local analysis_level="$1"
+  local custom_prompt="$2"
+  local compare_builds="${3:-false}"
+
+  local system_prompt
+  system_prompt="You are an expert software engineer and DevOps specialist specialising in Buildkite."
+   
+  if [ -n "${custom_prompt}" ]; then
+      system_prompt="${custom_prompt}"
+  else 
+      system_prompt="${system_prompt} Please provide a detailed analysis of the ${analysis_level} information provided." 
+      if [ "${analysis_level}" = "build" ]; then
+        system_prompt="${system_prompt} Focus on the following aspects:
+1. **Analysis**: What happened in this build? Any notable issues or warnings across jobs?
+2. **Key Points**: Important information across all jobs and their significance."
+        if [ "${compare_builds}" = "true" ]; then
+          system_prompt="${system_prompt} 
+3. **Build Time Comparison**: Analyze the build time trends compared to recent builds. Identify patterns or anomalies in build duration."
+        fi
+      else
+        system_prompt="${system_prompt} Focus on the following aspects:
+1. **Analysis**: What happened in this job? $([ "${BUILDKITE_COMMAND_EXIT_STATUS:-0}" -ne 0 ] && echo "Why did this job fail?" || echo "Any notable issues or warnings in this job?")
+2. **Key Points**: Important information in this job."
+        if [ "${compare_builds}" = "true" ]; then
+          system_prompt="${system_prompt} 
+3. **Job's Run Time Comparison**: Analyze the job's run time trends compared to recent builds. Identify patterns or anomalies in job duration."
+        fi
+      fi
+  fi
+  echo "${system_prompt}
+
+If no errors are found, just confirm the build succeeded.
+Do not include speculative or unrelated information."
+
 }
