@@ -682,6 +682,9 @@ function build_system_prompt() {
         system_prompt="${system_prompt} Focus on the following aspects:
 1. **Analysis**: What happened in this job? $([ "${BUILDKITE_COMMAND_EXIT_STATUS:-0}" -ne 0 ] && echo "Why did this job fail?" || echo "Any notable issues or warnings in this job?")
 2. **Key Points**: Important information in this job."
+        if [ "${compare_builds}" = "true" ]; then
+          system_prompt="${system_prompt} 
+3. **Job's Run Time Comparison**: Analyze the job's run time trends compared to recent builds. Identify patterns or anomalies in job duration."
       fi
 
 
