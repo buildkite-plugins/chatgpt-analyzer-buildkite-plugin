@@ -617,9 +617,9 @@ function analyse_build() {
     content_response="  ${content_response}"
     if [ -n "${content_response}" ]; then
       annotation_file="/tmp/chatgpt_analysis.md"
-      annotation_title="Step Level Analysis"
+      annotation_title="ChatGPT Analyzer Plugin: Step Level Analysis"
       if [ "${analysis_level}" == "build" ]; then
-        annotation_title="Build Level Analysis"
+        annotation_title="ChatGPT Analyzer Plugin: Build Level Analysis"
       fi
 
       # create annotation file

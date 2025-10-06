@@ -21,7 +21,7 @@ steps:
   - label: "🔍 Prompt ChatGPT to summarise test results"
     command: "npm test"
     plugins:
-      - chatgpt-analyzer#v1.0.0: ~
+      - chatgpt-analyzer#v1.1.0: ~
 ```
 
 ### Using Buildkite secrets (recommended)
@@ -41,7 +41,7 @@ steps:
   - label: "🔍 Prompt ChatGPT to summarise build"
     command: echo "Summarise build"
     plugins:
-      - chatgpt-analyzer#v1.0.0: ~
+      - chatgpt-analyzer#v1.1.0: ~
 ```
 
 
@@ -91,7 +91,7 @@ steps:
   - label: "🔍 Prompt ChatGPT to focus on build performance"
     command: "npm test"
     plugins:
-      - chatgpt-analyzer#v1.0.0:
+      - chatgpt-analyzer#v1.1.0:
           api_key: "$OTHER_OPENAI_API_TOKEN"
           buildkite_api_token: "$OTHER_BUILDKITE_API_TOKEN"
           model: "gpt-5-nano"
@@ -108,7 +108,7 @@ steps:
   - label: "🔍 Prompt ChatGPT to focus on comparison with previous builds"
     command: "npm test"
     plugins:
-      - chatgpt-analyzer#v1.0.0:
+      - chatgpt-analyzer#v1.1.0:
           analysis_level: build
           compare_builds:  true
           build_comparison_range: 10
